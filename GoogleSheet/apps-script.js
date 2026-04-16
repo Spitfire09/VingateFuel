@@ -53,6 +53,16 @@ function doPost(e) {
       sheet.setColumnWidth(9, 220);
     }
 
+    // Prevent duplicate entries: skip if entryId already exists in the sheet
+    if (data.entryId && sheet.getLastRow() > 1) {
+      const existingIds = sheet.getRange(2, 9, sheet.getLastRow() - 1, 1).getValues().flat();
+      if (existingIds.includes(data.entryId)) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ status: 'ok', message: 'duplicate' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     sheet.appendRow([
       formattedDate,
       formattedTime,

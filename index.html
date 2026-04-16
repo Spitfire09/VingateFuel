@@ -1032,9 +1032,10 @@ document.getElementById('clear-btn').addEventListener('click', () => {
 // ══════════════════════════════════════════
 async function trySync(newEntries) {
   const s = getSettings();
-  if (!s.sheetUrl) return;
-  try {
-    for (const entry of newEntries) {
+  if (!s.sheetUrl) return 0;
+  let synced = 0;
+  for (const entry of newEntries) {
+    try {
       const payload = {
         secret:        s.secretKey || '',
         entryId:       entry.id,
@@ -1046,18 +1047,19 @@ async function trySync(newEntries) {
         note:          entry.note          || ''
       };
       await fetch(s.sheetUrl, {
-        method:  'POST',
-        mode:    'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
+        method: 'POST',
+        mode:   'no-cors',
+        body:   JSON.stringify(payload)
       });
       const entries = getEntries();
       const idx = entries.findIndex(e => e.id === entry.id);
       if (idx !== -1) { entries[idx].synced = true; saveEntries(entries); }
+      synced++;
+    } catch (err) {
+      console.warn('Sync fejlede for post', entry.id, ':', err);
     }
-  } catch (err) {
-    console.warn('Sync fejlede:', err);
   }
+  return synced;
 }
 
 async function pullFromSheet() {
@@ -1098,13 +1100,19 @@ document.getElementById('sync-btn').addEventListener('click', async () => {
   const unsynced = getEntries().filter(e => !e.synced);
   syncBtn.innerHTML = '↻ Synkroniserer…';
 
-  await trySync(unsynced);
+  const pushedCount = await trySync(unsynced);
   const pulledCount = await pullFromSheet();
 
   syncBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.71"/></svg> Synkroniser`;
 
   if (!unsynced.length && pulledCount === 0) {
     toast('Intet nyt at synkronisere', false, true);
+  } else if (pushedCount === 0 && unsynced.length > 0) {
+    toast('⚠️ Kunne ikke sende poster til arket — prøv igen', true);
+  } else if (pulledCount > 0 && pushedCount > 0) {
+    toast(`✓ Synkroniseret (${pushedCount} sendt, ${pulledCount} modtaget)`);
+    renderHistory();
+    renderStats();
   } else if (pulledCount > 0) {
     toast(`✓ Synkroniseret (${pulledCount} nye fra arket)`);
     renderHistory();
@@ -1130,12 +1138,16 @@ function toast(msg, isError = false, isInfo = false) {
 // INIT
 // ══════════════════════════════════════════
 loadSettings();
-pullFromSheet().then(added => {
+(async () => {
+  // Push any locally unsynced entries first, then pull from sheet
+  const unsynced = getEntries().filter(e => !e.synced);
+  if (unsynced.length) await trySync(unsynced);
+  const added = await pullFromSheet();
   if (added > 0) {
     renderHistory();
     renderStats();
   }
-});
+})();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
