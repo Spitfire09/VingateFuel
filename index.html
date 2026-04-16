@@ -254,6 +254,22 @@
     }
     .kml-badge.good { color: #6bc49a; background: rgba(107,196,154,.12); }
     .kml-badge.unknown { color: var(--muted); background: rgba(106,138,168,.1); font-size: 0.78rem; }
+    .kml-badge.anomaly { color: var(--accent2); background: rgba(224,92,92,.12); }
+    .kml-badge.excluded-kml { color: var(--muted); background: rgba(106,138,168,.08); }
+    .history-item.excluded { opacity: 0.55; border-color: var(--surface2); }
+    .exclude-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .2s;
+    }
+    .exclude-toggle.is-included { border-color: var(--border); color: var(--muted); }
+    .exclude-toggle.is-excluded { border-color: var(--accent3); color: var(--accent3); }
     .history-meta {
       display: flex;
       flex-wrap: wrap;
@@ -502,6 +518,18 @@
         <div class="settings-sub">Standard er 1,60934. Justér hvis din veteranbils odometer ikke måler præcist. Fx hvis den viser for lidt, sæt faktoren højere.</div>
         <input type="number" id="setting-km-factor" placeholder="1.60934" min="0.5" max="3" step="0.00001" inputmode="decimal" />
       </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Maks. forventet km/L (absolut grænse)</div>
+        <div class="settings-sub">Tankninger over denne grænse markeres automatisk som udelukkede fra beregninger. Standard: 10</div>
+        <input type="number" id="setting-anomaly-abs" placeholder="10" min="1" max="50" step="0.5" inputmode="decimal" />
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Advarselsfaktor (relativ grænse)</div>
+        <div class="settings-sub">Markér som udeladt hvis km/L er X gange over gennemsnittet. Standard: 1.8</div>
+        <input type="number" id="setting-anomaly-factor" placeholder="1.8" min="1.1" max="5" step="0.1" inputmode="decimal" />
+      </div>
     </div>
 
     <div class="card">
@@ -681,6 +709,32 @@ document.getElementById('save-log').addEventListener('click', () => {
     }
   }
 
+  // Anomaly detection: auto-exclude if km/L is suspiciously high
+  let autoExcluded = false;
+  if (sorted.length > 0) {
+    const prev = sorted[sorted.length - 1];
+    const distKm = (odometer - prev.odometer) * kmFactor();
+    if (distKm > 0) {
+      const expectedKml = distKm / liters;
+      const cfg = getSettings();
+      const absMax        = parseFloat(cfg.anomalyAbsMax) || 10;
+      const anomalyFactor = parseFloat(cfg.anomalyFactor) || 1.8;
+      const { kmlMap } = calcKml(entries);
+      const nonExcludedKmls = entries
+        .filter(en => !en.excluded && kmlMap[en.id] !== undefined)
+        .map(en => kmlMap[en.id]);
+      const avgKml = nonExcludedKmls.length
+        ? nonExcludedKmls.reduce((sum, v) => sum + v, 0) / nonExcludedKmls.length
+        : 0;
+      const isAnomaly = expectedKml > absMax || (avgKml > 0 && expectedKml > avgKml * anomalyFactor);
+      if (isAnomaly) {
+        autoExcluded = true;
+        const avgPart = avgKml > 0 ? `\nGennemsnit: ${avgKml.toFixed(1)} km/L.` : '';
+        alert(`⚠️ Beregnet km/L (${expectedKml.toFixed(1)}) er usædvanlig høj — måske er en tankning glemt?${avgPart}\n\nPosten gemmes og markeres automatisk som udeladt fra beregninger.\nDu kan ændre dette under Historik.`);
+      }
+    }
+  }
+
   const entry = {
     id:           generateEntryId(),
     timestamp:    new Date().toISOString(),
@@ -689,7 +743,8 @@ document.getElementById('save-log').addEventListener('click', () => {
     pricePerLiter: ppl,
     totalPrice:   total,
     note:         note,
-    synced:       false
+    synced:       false,
+    excluded:     autoExcluded
   };
 
   entries.unshift(entry);
@@ -709,6 +764,19 @@ function resetLogForm() {
 }
 
 // ══════════════════════════════════════════
+// TOGGLE EXCLUDE
+// ══════════════════════════════════════════
+function toggleExclude(id) {
+  const entries = getEntries();
+  const idx = entries.findIndex(e => e.id === id);
+  if (idx === -1) return;
+  entries[idx].excluded = !entries[idx].excluded;
+  saveEntries(entries);
+  renderHistory();
+  renderStats();
+}
+
+// ══════════════════════════════════════════
 // HISTORY
 // ══════════════════════════════════════════
 function renderHistory() {
@@ -723,16 +791,32 @@ function renderHistory() {
   const { kmlMap, kmDistMap } = calcKml(entries);
   const sorted = [...entries].sort((a, b) => b.odometer - a.odometer);
 
+  const cfg = getSettings();
+  const absMax        = parseFloat(cfg.anomalyAbsMax)  || 10;
+  const anomalyFactor = parseFloat(cfg.anomalyFactor)  || 1.8;
+  const nonExcludedKmls = entries
+    .filter(e => !e.excluded && kmlMap[e.id] !== undefined)
+    .map(e => kmlMap[e.id]);
+  const avgKml = nonExcludedKmls.length
+    ? nonExcludedKmls.reduce((sum, v) => sum + v, 0) / nonExcludedKmls.length
+    : 0;
+
   list.innerHTML = sorted.map(e => {
     const d      = new Date(e.timestamp);
     const dateStr = d.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
     const kml    = kmlMap[e.id];
     const distKm = kmDistMap[e.id];
+    const isExcluded = !!e.excluded;
+
+    const isAnomaly = kml !== undefined && (
+      kml > absMax || (avgKml > 0 && kml > avgKml * anomalyFactor)
+    );
 
     let kmlHtml;
     if (kml !== undefined) {
-      const cls = kml >= 12 ? 'good' : '';
-      kmlHtml = `<span class="kml-badge ${cls}">${kml.toFixed(2)} km/l</span>`;
+      let cls = isExcluded ? 'excluded-kml' : (isAnomaly ? 'anomaly' : (kml >= 12 ? 'good' : ''));
+      const warningIcon = isAnomaly && !isExcluded ? ' ⚠️' : '';
+      kmlHtml = `<span class="kml-badge ${cls}">${kml.toFixed(2)} km/l${warningIcon}</span>`;
     } else {
       kmlHtml = `<span class="kml-badge unknown">første afls.</span>`;
     }
@@ -747,13 +831,22 @@ function renderHistory() {
 
     const syncDot = `<span class="sync-dot ${e.synced ? 'synced' : 'unsynced'}" title="${e.synced ? 'Synkroniseret' : 'Ikke synkroniseret'}"></span>`;
 
-    return `<div class="history-item">
+    const toggleRow = kml !== undefined ? `
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        <button class="exclude-toggle ${isExcluded ? 'is-excluded' : 'is-included'}" onclick="toggleExclude('${e.id}')">
+          ${isExcluded ? '↩ Medtag i statistik' : '✕ Udelad fra statistik'}
+        </button>
+        ${isExcluded ? '<span style="font-size:0.72rem;color:var(--accent2);">Udeladt fra statistik</span>' : ''}
+      </div>` : '';
+
+    return `<div class="history-item${isExcluded ? ' excluded' : ''}">
       <div class="history-header">
         <div class="history-date">📅 ${dateStr}${syncDot}</div>
         ${kmlHtml}
       </div>
       <div class="history-meta">${meta.join('')}</div>
       ${e.note ? `<div class="history-note">💬 ${e.note}</div>` : ''}
+      ${toggleRow}
     </div>`;
   }).join('');
 }
@@ -773,7 +866,9 @@ function renderStats() {
   }
 
   const { kmlMap, kmDistMap } = calcKml(entries);
-  const kmlValues = Object.values(kmlMap);
+  const kmlValues = entries
+    .filter(e => !e.excluded && kmlMap[e.id] !== undefined)
+    .map(e => kmlMap[e.id]);
   const avgKml = kmlValues.length
     ? (kmlValues.reduce((s, v) => s + v, 0) / kmlValues.length).toFixed(2)
     : '–';
@@ -782,12 +877,13 @@ function renderStats() {
   const totalLiters = entries.reduce((s, e) => s + e.liters, 0);
   const totalCost   = entries.reduce((s, e) => s + (e.totalPrice || 0), 0);
   const totalKm     = Object.values(kmDistMap).reduce((s, v) => s + v, 0);
+  const excludedCount = entries.filter(e => e.excluded).length;
 
   grid.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Gns. KM/L</div>
       <div class="stat-value">${avgKml}</div>
-      <div class="stat-sub">alle tankninger</div>
+      <div class="stat-sub">${excludedCount > 0 ? `excl. ${excludedCount} udeladt${excludedCount !== 1 ? 'e' : ''}` : 'alle tankninger'}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Bedste KM/L</div>
@@ -817,9 +913,9 @@ function renderStats() {
     </div>
   `;
 
-  // Trend: last 10 with KM/L
+  // Trend: last 10 non-excluded with KM/L
   const sortedByOdo = sortedByOdometer(entries);
-  const last10 = sortedByOdo.filter(e => kmlMap[e.id] !== undefined).slice(-10).reverse();
+  const last10 = sortedByOdo.filter(e => !e.excluded && kmlMap[e.id] !== undefined).slice(-10).reverse();
 
   if (!last10.length) {
     trendEl.innerHTML = `<div class="empty-state" style="padding:20px"><div class="big" style="font-size:1.5rem">📈</div>Log mindst 2 tankninger for at se tendens.</div>`;
@@ -849,17 +945,23 @@ function renderStats() {
 // ══════════════════════════════════════════
 function loadSettings() {
   const s = getSettings();
-  document.getElementById('setting-km-factor').value   = s.kmFactor   || DEFAULT_KM_FACTOR;
-  document.getElementById('setting-sheet-url').value   = s.sheetUrl   || '';
-  document.getElementById('setting-secret-key').value  = s.secretKey  || '';
+  document.getElementById('setting-km-factor').value      = s.kmFactor      || DEFAULT_KM_FACTOR;
+  document.getElementById('setting-anomaly-abs').value    = s.anomalyAbsMax || 10;
+  document.getElementById('setting-anomaly-factor').value = s.anomalyFactor || 1.8;
+  document.getElementById('setting-sheet-url').value      = s.sheetUrl      || '';
+  document.getElementById('setting-secret-key').value     = s.secretKey     || '';
 }
 
 document.getElementById('save-settings').addEventListener('click', () => {
-  const kmFactor = parseFloat(document.getElementById('setting-km-factor').value);
+  const kmFactor      = parseFloat(document.getElementById('setting-km-factor').value);
+  const anomalyAbs    = parseFloat(document.getElementById('setting-anomaly-abs').value);
+  const anomalyFactor = parseFloat(document.getElementById('setting-anomaly-factor').value);
   // The secret key is a shared URL token (not a password), stored in localStorage
   // as required for a client-side-only PWA with no server component.
   const s = {
-    kmFactor:  (kmFactor > 0) ? kmFactor : DEFAULT_KM_FACTOR,
+    kmFactor:      (kmFactor > 0)      ? kmFactor      : DEFAULT_KM_FACTOR,
+    anomalyAbsMax: (anomalyAbs > 0)    ? anomalyAbs    : 10,
+    anomalyFactor: (anomalyFactor > 1) ? anomalyFactor : 1.8,
     sheetUrl:  document.getElementById('setting-sheet-url').value.trim(),
     secretKey: document.getElementById('setting-secret-key').value.trim()
   };
