@@ -1,0 +1,40 @@
+name: Pages Review Deployment
+
+on:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine deploy directory
+        id: dir
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          # Sanitize branch name for use as a directory (replace / and spaces with -)
+          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+            DEPLOY_DIR="."
+          else
+            DEPLOY_DIR="$SAFE_BRANCH"
+          fi
+          echo "deploy_dir=$DEPLOY_DIR" >> "$GITHUB_OUTPUT"
+          echo "Branch: $BRANCH -> deploy dir: $DEPLOY_DIR"
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          destination_dir: ${{ steps.dir.outputs.deploy_dir }}
+          exclude_assets: '.github'
+          keep_files: true
