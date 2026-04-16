@@ -293,6 +293,37 @@
     }
     .sync-dot.synced { background: var(--accent); }
     .sync-dot.unsynced { background: var(--muted); }
+    .delete-btn {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 3px 7px;
+      cursor: pointer;
+      transition: all .2s;
+      line-height: 1;
+    }
+    .delete-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+    .ocr-btn {
+      background: none;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .2s;
+      width: 100%;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .ocr-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ocr-btn:disabled { opacity: .45; cursor: not-allowed; }
 
     /* ── STATS ── */
     .stats-grid {
@@ -459,6 +490,8 @@
       <div class="field-group">
         <div class="field-label">Kilometertæller (miles) <span class="required">*</span></div>
         <input type="number" id="log-odometer" placeholder="f.eks. 87432" min="0" step="1" inputmode="decimal" />
+        <button type="button" class="ocr-btn" id="ocr-btn">📷 Aflæs kilometertæller med kamera</button>
+        <input type="file" id="ocr-input" accept="image/*" capture="environment" style="display:none" />
       </div>
 
       <div class="field-row">
@@ -642,7 +675,7 @@ function sortedByOdometer(entries) {
 // Calculate KM/L for each entry (needs previous odometer reading)
 function calcKml(entries) {
   const factor = kmFactor();
-  const sorted = sortedByOdometer(entries);
+  const sorted = sortedByOdometer(entries.filter(e => !e.isDeleted));
   const kmlMap = {};
   const kmDistMap = {};
 
@@ -701,7 +734,8 @@ document.getElementById('save-log').addEventListener('click', () => {
 
   // Warn if odometer is lower than the last entry
   const entries = getEntries();
-  const sorted  = sortedByOdometer(entries);
+  const activeEntries = entries.filter(e => !e.isDeleted);
+  const sorted  = sortedByOdometer(activeEntries);
   if (sorted.length > 0) {
     const lastOdometer = sorted[sorted.length - 1].odometer;
     if (odometer <= lastOdometer) {
@@ -719,8 +753,8 @@ document.getElementById('save-log').addEventListener('click', () => {
       const cfg = getSettings();
       const absMax        = parseFloat(cfg.anomalyAbsMax) || 10;
       const anomalyFactor = parseFloat(cfg.anomalyFactor) || 1.8;
-      const { kmlMap } = calcKml(entries);
-      const nonExcludedKmls = entries
+      const { kmlMap } = calcKml(activeEntries);
+      const nonExcludedKmls = activeEntries
         .filter(en => !en.excluded && kmlMap[en.id] !== undefined)
         .map(en => kmlMap[en.id]);
       const avgKml = nonExcludedKmls.length
@@ -738,13 +772,15 @@ document.getElementById('save-log').addEventListener('click', () => {
   const entry = {
     id:           generateEntryId(),
     timestamp:    new Date().toISOString(),
+    updatedAt:    new Date().toISOString(),
     odometer:     odometer,
     liters:       liters,
     pricePerLiter: ppl,
     totalPrice:   total,
     note:         note,
     synced:       false,
-    excluded:     autoExcluded
+    excluded:     autoExcluded,
+    isDeleted:    false
   };
 
   entries.unshift(entry);
@@ -770,17 +806,40 @@ function toggleExclude(id) {
   const entries = getEntries();
   const idx = entries.findIndex(e => e.id === id);
   if (idx === -1) return;
-  entries[idx].excluded = !entries[idx].excluded;
+  entries[idx].excluded  = !entries[idx].excluded;
+  entries[idx].updatedAt = new Date().toISOString();
+  entries[idx].synced    = false;
   saveEntries(entries);
   renderHistory();
   renderStats();
+  trySync([entries[idx]]);
+}
+
+// ══════════════════════════════════════════
+// DELETE ENTRY (soft-delete)
+// ══════════════════════════════════════════
+function deleteEntry(id) {
+  if (!confirm('Slet denne tankning? Den fjernes fra historikken og markeres som slettet på alle enheder.')) return;
+  const entries = getEntries();
+  const idx = entries.findIndex(e => e.id === id);
+  if (idx === -1) return;
+  const now = new Date().toISOString();
+  entries[idx].isDeleted  = true;
+  entries[idx].deletedAt  = now;
+  entries[idx].updatedAt  = now;
+  entries[idx].synced     = false;
+  saveEntries(entries);
+  toast('Tankning slettet', false, true);
+  renderHistory();
+  renderStats();
+  trySync([entries[idx]]);
 }
 
 // ══════════════════════════════════════════
 // HISTORY
 // ══════════════════════════════════════════
 function renderHistory() {
-  const entries = getEntries();
+  const entries = getEntries().filter(e => !e.isDeleted);
   const list = document.getElementById('history-list');
 
   if (!entries.length) {
@@ -831,13 +890,11 @@ function renderHistory() {
 
     const syncDot = `<span class="sync-dot ${e.synced ? 'synced' : 'unsynced'}" title="${e.synced ? 'Synkroniseret' : 'Ikke synkroniseret'}"></span>`;
 
-    const toggleRow = kml !== undefined ? `
-      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
-        <button class="exclude-toggle ${isExcluded ? 'is-excluded' : 'is-included'}" onclick="toggleExclude('${e.id}')">
-          ${isExcluded ? '↩ Medtag i statistik' : '✕ Udelad fra statistik'}
-        </button>
-        ${isExcluded ? '<span style="font-size:0.72rem;color:var(--accent2);">Udeladt fra statistik</span>' : ''}
-      </div>` : '';
+    const excludeToggle = kml !== undefined ? `
+      <button class="exclude-toggle ${isExcluded ? 'is-excluded' : 'is-included'}" onclick="toggleExclude('${e.id}')">
+        ${isExcluded ? '↩ Medtag i statistik' : '✕ Udelad fra statistik'}
+      </button>
+      ${isExcluded ? '<span style="font-size:0.72rem;color:var(--accent2);">Udeladt fra statistik</span>' : ''}` : '';
 
     return `<div class="history-item${isExcluded ? ' excluded' : ''}">
       <div class="history-header">
@@ -846,7 +903,10 @@ function renderHistory() {
       </div>
       <div class="history-meta">${meta.join('')}</div>
       ${e.note ? `<div class="history-note">💬 ${e.note}</div>` : ''}
-      ${toggleRow}
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        ${excludeToggle}
+        <button class="delete-btn" onclick="deleteEntry('${e.id}')" title="Slet tankning" style="margin-left:auto">🗑️</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -855,7 +915,7 @@ function renderHistory() {
 // STATS
 // ══════════════════════════════════════════
 function renderStats() {
-  const entries = getEntries();
+  const entries = getEntries().filter(e => !e.isDeleted);
   const grid    = document.getElementById('stats-grid');
   const trendEl = document.getElementById('trend-list');
 
@@ -1040,11 +1100,15 @@ async function trySync(newEntries) {
         secret:        s.secretKey || '',
         entryId:       entry.id,
         timestamp:     entry.timestamp,
+        updatedAt:     entry.updatedAt     || entry.timestamp,
         odometer:      entry.odometer,
         liters:        entry.liters,
         pricePerLiter: entry.pricePerLiter || '',
         totalPrice:    entry.totalPrice    || '',
-        note:          entry.note          || ''
+        note:          entry.note          || '',
+        excluded:      !!entry.excluded,
+        isDeleted:     !!entry.isDeleted,
+        deletedAt:     entry.deletedAt     || ''
       };
       await fetch(s.sheetUrl, {
         method: 'POST',
@@ -1076,19 +1140,38 @@ async function pullFromSheet() {
     if (!payload || payload.status !== 'ok' || !Array.isArray(payload.entries)) return 0;
 
     const localEntries = getEntries();
-    const localIds     = new Map(localEntries.map(e => [e.id, e]));
+    const localMap     = new Map(localEntries.map(e => [e.id, e]));
 
-    let added = 0;
+    let added   = 0;
+    let updated = 0;
     for (const remote of payload.entries) {
-      if (!localIds.has(remote.id)) {
+      const local = localMap.get(remote.id);
+      if (!local) {
+        // New entry from another device
         localEntries.push({ ...remote, synced: true });
         added++;
+      } else {
+        // Update local entry if remote is newer (last-write-wins)
+        const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+        const localTime  = local.updatedAt  ? new Date(local.updatedAt).getTime()  : 0;
+        if (remoteTime > localTime) {
+          const idx = localEntries.findIndex(e => e.id === remote.id);
+          localEntries[idx] = {
+            ...localEntries[idx],
+            excluded:  !!remote.excluded,
+            isDeleted: !!remote.isDeleted,
+            deletedAt: remote.deletedAt || localEntries[idx].deletedAt || '',
+            updatedAt: remote.updatedAt,
+            synced:    true
+          };
+          updated++;
+        }
       }
     }
-    if (added > 0) {
+    if (added > 0 || updated > 0) {
       saveEntries(localEntries);
     }
-    return added;
+    return added + updated;
   } catch (err) {
     console.warn('Læsning fra ark fejlede:', err);
     return 0;
@@ -1114,7 +1197,7 @@ document.getElementById('sync-btn').addEventListener('click', async () => {
     renderHistory();
     renderStats();
   } else if (pulledCount > 0) {
-    toast(`✓ Synkroniseret (${pulledCount} nye fra arket)`);
+    toast(`✓ Synkroniseret (${pulledCount} modtaget fra arket)`);
     renderHistory();
     renderStats();
   } else {
@@ -1147,6 +1230,68 @@ loadSettings();
     renderHistory();
     renderStats();
   }
+})();
+
+// ══════════════════════════════════════════
+// OCR — TRIP COUNTER READER
+// ══════════════════════════════════════════
+(function () {
+  const ocrInput = document.getElementById('ocr-input');
+  const ocrBtn   = document.getElementById('ocr-btn');
+
+  ocrBtn.addEventListener('click', () => {
+    ocrInput.value = '';
+    ocrInput.click();
+  });
+
+  ocrInput.addEventListener('change', async () => {
+    const file = ocrInput.files[0];
+    if (!file) return;
+
+    ocrBtn.disabled    = true;
+    ocrBtn.textContent = '🔍 Aflæser…';
+
+    try {
+      // Lazy-load Tesseract.js from CDN on first use
+      if (typeof Tesseract === 'undefined') {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js';
+          s.onload  = resolve;
+          s.onerror = () => reject(new Error('offline'));
+          document.head.appendChild(s);
+        });
+      }
+
+      // Run OCR with digit whitelist for best accuracy on numbers
+      const worker = await Tesseract.createWorker('eng');
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789.' });
+      const imageUrl = URL.createObjectURL(file);
+      const { data: { text } } = await worker.recognize(imageUrl);
+      await worker.terminate();
+      URL.revokeObjectURL(imageUrl);
+
+      // Extract all digit sequences and pick the largest (most likely odometer)
+      const numbers = (text.match(/\d+/g) || []).map(Number).filter(n => n > 0);
+      if (numbers.length > 0) {
+        const best = Math.max(...numbers);
+        document.getElementById('log-odometer').value = best;
+        toast(`📷 Aflæst: ${best.toLocaleString('da-DK')} — ret om nødvendigt`, false, true);
+      } else {
+        toast('Ingen tal aflæst — prøv et tydeligere billede', true);
+      }
+    } catch (err) {
+      console.warn('OCR fejl:', err);
+      const msg = err.message === 'offline'
+        ? 'OCR kræver netforbindelse — prøv igen online'
+        : 'OCR fejlede — prøv igen';
+      toast(msg, true);
+    } finally {
+      ocrBtn.disabled    = false;
+      ocrBtn.textContent = '📷 Aflæs kilometertæller med kamera';
+      ocrInput.value     = '';
+    }
+  });
 })();
 
 if ('serviceWorker' in navigator) {
