@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f1923" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Log brændstof og KM/L for din veteranbil" />
+  <title>VingateFuel</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0b1218;
+      --surface:   #121d27;
+      --surface2:  #1a2a38;
+      --border:    #1f3044;
+      --accent:    #3ecfcf;
+      --accent2:   #e05c5c;
+      --accent3:   #f0a040;
+      --text:      #e8f0f7;
+      --muted:     #6a8aa8;
+      --r:         14px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ── HEADER ── */
+    header {
+      padding: 20px 20px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.4rem;
+      letter-spacing: -0.5px;
+      color: var(--accent3);
+    }
+    .logo span { color: var(--text); }
+    #sync-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 50px;
+      font-size: 0.78rem;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #sync-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #sync-btn svg { width: 14px; height: 14px; }
+
+    /* ── TABS ── */
+    nav {
+      display: flex;
+      gap: 4px;
+      padding: 16px 20px 0;
+    }
+    nav button {
+      flex: 1;
+      padding: 10px 6px;
+      border: none;
+      border-radius: var(--r) var(--r) 0 0;
+      background: var(--surface2);
+      color: var(--muted);
+      font-family: 'Syne', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    nav button.active {
+      background: var(--surface);
+      color: var(--accent3);
+      border-bottom: 2px solid var(--accent3);
+    }
+
+    /* ── MAIN ── */
+    main {
+      flex: 1;
+      background: var(--surface);
+      padding: 24px 20px 100px;
+      overflow-y: auto;
+    }
+
+    .tab { display: none; }
+    .tab.active { display: block; }
+
+    /* ── SECTION TITLE ── */
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .icon-red   { background: rgba(224,92,92,.15); }
+    .icon-teal  { background: rgba(62,207,207,.12); }
+    .icon-amber { background: rgba(240,160,64,.12); }
+
+    /* ── FORM FIELDS ── */
+    .field-group {
+      margin-bottom: 16px;
+    }
+    .field-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .field-label .required { color: var(--accent3); }
+    input[type=number], input[type=text], input[type=url], input[type=password] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      padding: 12px 16px;
+      width: 100%;
+      outline: none;
+      transition: border-color .2s;
+      -moz-appearance: textfield;
+    }
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type=number]:focus,
+    input[type=text]:focus,
+    input[type=url]:focus,
+    input[type=password]:focus { border-color: var(--accent3); }
+    input::placeholder { color: var(--muted); font-size: 0.88rem; }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      padding: 12px;
+      resize: none;
+      height: 70px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    textarea:focus { border-color: var(--accent3); }
+    textarea::placeholder { color: var(--muted); }
+
+    /* ── SAVE BUTTON ── */
+    .save-btn {
+      width: 100%;
+      padding: 15px;
+      border-radius: var(--r);
+      border: none;
+      background: var(--accent3);
+      color: #0b1218;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 0.95rem;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .save-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .save-btn:active { transform: translateY(0); }
+    .save-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+    /* ── HISTORY ── */
+    .history-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      animation: fadeIn .3s ease;
+    }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform:none; } }
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .history-date {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.92rem;
+    }
+    .kml-badge {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1rem;
+      color: var(--accent3);
+      background: rgba(240,160,64,.12);
+      border-radius: 8px;
+      padding: 4px 10px;
+    }
+    .kml-badge.good { color: #6bc49a; background: rgba(107,196,154,.12); }
+    .kml-badge.unknown { color: var(--muted); background: rgba(106,138,168,.1); font-size: 0.78rem; }
+    .kml-badge.anomaly { color: var(--accent2); background: rgba(224,92,92,.12); }
+    .kml-badge.excluded-kml { color: var(--muted); background: rgba(106,138,168,.08); }
+    .history-item.excluded { opacity: 0.55; border-color: var(--surface2); }
+    .exclude-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .2s;
+    }
+    .exclude-toggle.is-included { border-color: var(--border); color: var(--muted); }
+    .exclude-toggle.is-excluded { border-color: var(--accent3); color: var(--accent3); }
+    .history-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .history-meta span { display: flex; align-items: center; gap: 4px; }
+    .history-note {
+      margin-top: 6px;
+      font-size: 0.8rem;
+      color: var(--text);
+      opacity: .7;
+    }
+    .sync-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+    .sync-dot.synced { background: var(--accent); }
+    .sync-dot.unsynced { background: var(--muted); }
+    .delete-btn {
+      background: none;
+      border: 1px solid rgba(224,92,92,.35);
+      border-radius: 6px;
+      color: rgba(224,92,92,.7);
+      font-size: 0.85rem;
+      padding: 3px 7px;
+      cursor: pointer;
+      transition: all .2s;
+      line-height: 1;
+    }
+    .delete-btn:hover { border-color: var(--accent2); color: var(--accent2); background: rgba(224,92,92,.08); }
+    .ocr-btn {
+      background: none;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all .2s;
+      width: 100%;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .ocr-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ocr-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── STATS ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 16px;
+    }
+    .stat-card.wide {
+      grid-column: 1 / -1;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--accent3);
+    }
+    .stat-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ── TREND LIST ── */
+    .trend-row {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .trend-bar-wrap { flex: 1; height: 4px; background: var(--border); border-radius: 2px; }
+    .trend-bar { height: 4px; border-radius: 2px; background: var(--accent3); }
+
+    /* ── SETTINGS ── */
+    .settings-row {
+      display: flex;
+      align-items: flex-start;
+      flex-direction: column;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-label { font-size: 0.9rem; font-weight: 500; }
+    .settings-sub { font-size: 0.75rem; color: var(--muted); margin-top: 2px; margin-bottom: 8px; }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--accent3);
+      color: #0b1218;
+      padding: 12px 24px;
+      border-radius: 50px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      opacity: 0;
+      transition: all .3s;
+      pointer-events: none;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.error { background: var(--accent2); }
+    #toast.info  { background: var(--accent); }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 72px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.65rem;
+      cursor: pointer;
+      padding: 8px 20px;
+      border-radius: 12px;
+      transition: all .15s;
+    }
+    .nav-item.active { color: var(--accent3); }
+    .nav-item svg { width: 22px; height: 22px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.8;
+    }
+    .empty-state .big { font-size: 2.5rem; margin-bottom: 10px; }
+
+    .info-box {
+      background: rgba(62,207,207,.07);
+      border: 1px solid rgba(62,207,207,.2);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Vingate<span>Fuel</span></div>
+  <button id="sync-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.71"/></svg>
+    Synkroniser
+  </button>
+</header>
+
+<nav>
+  <button class="active" data-tab="log">⛽ Log</button>
+  <button data-tab="history">📋 Historik</button>
+  <button data-tab="stats">📊 Oversigt</button>
+  <button data-tab="settings">⚙️ Indstil.</button>
+</nav>
+
+<main>
+
+  <!-- ════════ LOG TAB ════════ -->
+  <div class="tab active" id="tab-log">
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-amber">⛽</div>
+        Ny tankning
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Kilometertæller (miles) <span class="required">*</span></div>
+        <input type="number" id="log-odometer" placeholder="f.eks. 87432" min="0" step="1" inputmode="decimal" />
+        <button type="button" class="ocr-btn" id="ocr-btn">📷 Aflæs kilometertæller med kamera</button>
+        <input type="file" id="ocr-input" accept="image/*" capture="environment" style="display:none" />
+      </div>
+
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">Liter tanket <span class="required">*</span></div>
+          <input type="number" id="log-liters" placeholder="f.eks. 45.5" min="0.1" step="0.01" inputmode="decimal" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">Pris pr. liter (kr.)</div>
+          <input type="number" id="log-price-per-liter" placeholder="f.eks. 15.50" min="0" step="0.01" inputmode="decimal" />
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Total pris (kr.)</div>
+        <input type="number" id="log-total-price" placeholder="Beregnes automatisk eller indtast manuelt" min="0" step="0.01" inputmode="decimal" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Note (valgfrit)</div>
+        <textarea id="log-note" placeholder="f.eks. 'Shell ved motorvejen', 'fuld tank'…"></textarea>
+      </div>
+
+      <button class="save-btn" id="save-log">GEM TANKNING</button>
+    </div>
+
+    <div class="info-box">
+      💡 KM/L beregnes automatisk ud fra forskellen til den forrige odometer-aflæsning og omregningsfaktoren under Indstillinger.
+    </div>
+  </div>
+
+  <!-- ════════ HISTORY TAB ════════ -->
+  <div class="tab" id="tab-history">
+    <div id="history-list"></div>
+  </div>
+
+  <!-- ════════ STATS TAB ════════ -->
+  <div class="tab" id="tab-stats">
+    <div class="section-title">Samlet oversigt</div>
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <div class="section-title">Seneste 10 tankninger — KM/L</div>
+    <div id="trend-list"></div>
+  </div>
+
+  <!-- ════════ SETTINGS TAB ════════ -->
+  <div class="tab" id="tab-settings">
+
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-teal">🔧</div>
+        Omregning &amp; kalibrering
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Km pr. mile (omregningsfaktor)</div>
+        <div class="settings-sub">Standard er 1,60934. Justér hvis din veteranbils odometer ikke måler præcist. Fx hvis den viser for lidt, sæt faktoren højere.</div>
+        <input type="number" id="setting-km-factor" placeholder="1.60934" min="0.5" max="3" step="0.00001" inputmode="decimal" />
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Maks. forventet km/L (absolut grænse)</div>
+        <div class="settings-sub">Tankninger over denne grænse markeres automatisk som udelukkede fra beregninger. Standard: 10</div>
+        <input type="number" id="setting-anomaly-abs" placeholder="10" min="1" max="50" step="0.5" inputmode="decimal" />
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Advarselsfaktor (relativ grænse)</div>
+        <div class="settings-sub">Markér som udeladt hvis km/L er X gange over gennemsnittet. Standard: 1.8</div>
+        <input type="number" id="setting-anomaly-factor" placeholder="1.8" min="1.1" max="5" step="0.1" inputmode="decimal" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-teal">🔗</div>
+        Google Sheets integration
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Apps Script URL</div>
+        <div class="settings-sub">Indsæt din Google Apps Script web app URL her</div>
+        <input type="url" id="setting-sheet-url" placeholder="https://script.google.com/macros/s/…/exec" />
+      </div>
+
+      <div class="settings-row" style="border-bottom:none">
+        <div class="settings-label">Hemmelig nøgle (valgfrit)</div>
+        <div class="settings-sub">Ekstra sikkerhed — skal matche din Apps Script</div>
+        <input type="password" id="setting-secret-key" placeholder="f.eks. mit-hemmelige-token-123" />
+      </div>
+
+      <button class="save-btn" id="save-settings" style="background:var(--surface2);color:var(--accent);border:1.5px solid var(--accent);margin-top:4px;">GEM INDSTILLINGER</button>
+      <button class="save-btn" id="validate-access" style="background:var(--surface2);color:var(--accent3);border:1.5px solid var(--accent3);margin-top:10px;">VALIDER ADGANG TIL GOOGLE SHEET</button>
+      <div id="validate-status" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:0.85rem;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-amber">📋</div>
+        Vejledning — Google Sheets opsætning
+      </div>
+      <ol style="padding-left:18px;line-height:2;font-size:0.85rem;color:var(--muted)">
+        <li>Opret et nyt Google Sheet</li>
+        <li>Åbn <strong style="color:var(--text)">Udvidelser → Apps Script</strong></li>
+        <li>Indsæt koden fra <strong style="color:var(--text)">GoogleSheet/apps-script.js</strong></li>
+        <li>Deploy → <em style="color:var(--accent3)">Ny implementering</em> → Webapp</li>
+        <li>Sæt adgang til <em style="color:var(--accent3)">"Alle"</em> (kun du kender URL'en)</li>
+        <li>Kopiér URL og indsæt herover</li>
+        <li>Installér appen: Chrome menu → <em style="color:var(--accent3)">Tilføj til startskærm</em></li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-red">🗑️</div>
+        Dataadministration
+      </div>
+      <button class="save-btn" id="clear-btn" style="background:transparent;color:var(--accent2);border:1.5px solid var(--accent2);">SLET ALLE LOKALE DATA</button>
+    </div>
+
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════
+const DB_KEY     = 'vingatefuel_entries';
+const SET_KEY    = 'vingatefuel_settings';
+const DEVICE_KEY = 'vingatefuel_device_id';
+const DEFAULT_KM_FACTOR = 1.60934;
+
+// ══════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════
+function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    const entropy = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    id = 'dev-' + entropy;
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
+
+function generateEntryId() {
+  return `${getDeviceId()}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getEntries() {
+  try {
+    const entries = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+    return Array.isArray(entries) ? entries : [];
+  } catch { return []; }
+}
+
+function saveEntries(arr) {
+  localStorage.setItem(DB_KEY, JSON.stringify(arr));
+}
+
+function getSettings() {
+  try { return JSON.parse(localStorage.getItem(SET_KEY) || '{}'); } catch { return {}; }
+}
+
+function kmFactor() {
+  const s = getSettings();
+  const f = parseFloat(s.kmFactor);
+  return (f && f > 0) ? f : DEFAULT_KM_FACTOR;
+}
+
+// Sort entries ascending by odometer for KM/L calculation
+function sortedByOdometer(entries) {
+  return [...entries].sort((a, b) => a.odometer - b.odometer);
+}
+
+// Calculate KM/L for each entry (needs previous odometer reading)
+function calcKml(entries) {
+  const factor = kmFactor();
+  const sorted = sortedByOdometer(entries.filter(e => !e.isDeleted));
+  const kmlMap = {};
+  const kmDistMap = {};
+
+  for (let i = 1; i < sorted.length; i++) {
+    const curr = sorted[i];
+    const prev = sorted[i - 1];
+    const distMiles = curr.odometer - prev.odometer;
+    if (distMiles > 0 && curr.liters > 0) {
+      const distKm = distMiles * factor;
+      kmlMap[curr.id] = distKm / curr.liters;
+      kmDistMap[curr.id] = distKm;
+    }
+  }
+  return { kmlMap, kmDistMap };
+}
+
+// ══════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'history') renderHistory();
+    if (btn.dataset.tab === 'stats') renderStats();
+  });
+});
+
+// ══════════════════════════════════════════
+// PRICE AUTO-CALC
+// ══════════════════════════════════════════
+function updateTotalPrice() {
+  const ppl    = parseFloat(document.getElementById('log-price-per-liter').value);
+  const liters = parseFloat(document.getElementById('log-liters').value);
+  if (ppl > 0 && liters > 0) {
+    document.getElementById('log-total-price').value = (ppl * liters).toFixed(2);
+  }
+}
+document.getElementById('log-price-per-liter').addEventListener('input', updateTotalPrice);
+document.getElementById('log-liters').addEventListener('input', updateTotalPrice);
+
+// ══════════════════════════════════════════
+// SAVE LOG
+// ══════════════════════════════════════════
+document.getElementById('save-log').addEventListener('click', () => {
+  const odometer = parseFloat(document.getElementById('log-odometer').value);
+  const liters   = parseFloat(document.getElementById('log-liters').value);
+  const ppl      = parseFloat(document.getElementById('log-price-per-liter').value) || null;
+  const total    = parseFloat(document.getElementById('log-total-price').value) || null;
+  const note     = document.getElementById('log-note').value.trim();
+
+  if (!odometer || odometer <= 0) return toast('Indtast gyldig kilometertæller-aflæsning', true);
+  if (!liters || liters <= 0)    return toast('Indtast antal liter tanket', true);
+
+  // Warn if odometer is lower than the last entry
+  const entries = getEntries();
+  const activeEntries = entries.filter(e => !e.isDeleted);
+  const sorted  = sortedByOdometer(activeEntries);
+  if (sorted.length > 0) {
+    const lastOdometer = sorted[sorted.length - 1].odometer;
+    if (odometer <= lastOdometer) {
+      if (!confirm(`Advarsel: Den nye aflæsning (${odometer}) er ikke højere end den forrige (${lastOdometer}). Fortsæt alligevel?`)) return;
+    }
+  }
+
+  // Anomaly detection: auto-exclude if km/L is suspiciously high
+  let autoExcluded = false;
+  if (sorted.length > 0) {
+    const prev = sorted[sorted.length - 1];
+    const distKm = (odometer - prev.odometer) * kmFactor();
+    if (distKm > 0) {
+      const expectedKml = distKm / liters;
+      const cfg = getSettings();
+      const absMax        = parseFloat(cfg.anomalyAbsMax) || 10;
+      const anomalyFactor = parseFloat(cfg.anomalyFactor) || 1.8;
+      const { kmlMap } = calcKml(activeEntries);
+      const nonExcludedKmls = activeEntries
+        .filter(en => !en.excluded && kmlMap[en.id] !== undefined)
+        .map(en => kmlMap[en.id]);
+      const avgKml = nonExcludedKmls.length
+        ? nonExcludedKmls.reduce((sum, v) => sum + v, 0) / nonExcludedKmls.length
+        : 0;
+      const isAnomaly = expectedKml > absMax || (avgKml > 0 && expectedKml > avgKml * anomalyFactor);
+      if (isAnomaly) {
+        autoExcluded = true;
+        const avgPart = avgKml > 0 ? `\nGennemsnit: ${avgKml.toFixed(1)} km/L.` : '';
+        alert(`⚠️ Beregnet km/L (${expectedKml.toFixed(1)}) er usædvanlig høj — måske er en tankning glemt?${avgPart}\n\nPosten gemmes og markeres automatisk som udeladt fra beregninger.\nDu kan ændre dette under Historik.`);
+      }
+    }
+  }
+
+  const entry = {
+    id:           generateEntryId(),
+    timestamp:    new Date().toISOString(),
+    updatedAt:    new Date().toISOString(),
+    odometer:     odometer,
+    liters:       liters,
+    pricePerLiter: ppl,
+    totalPrice:   total,
+    note:         note,
+    synced:       false,
+    excluded:     autoExcluded,
+    isDeleted:    false
+  };
+
+  entries.unshift(entry);
+  saveEntries(entries);
+
+  toast('✓ Tankning gemt');
+  resetLogForm();
+  trySync([entry]);
+});
+
+function resetLogForm() {
+  document.getElementById('log-odometer').value      = '';
+  document.getElementById('log-liters').value         = '';
+  document.getElementById('log-price-per-liter').value = '';
+  document.getElementById('log-total-price').value    = '';
+  document.getElementById('log-note').value           = '';
+}
+
+// ══════════════════════════════════════════
+// TOGGLE EXCLUDE
+// ══════════════════════════════════════════
+function toggleExclude(id) {
+  const entries = getEntries();
+  const idx = entries.findIndex(e => e.id === id);
+  if (idx === -1) return;
+  entries[idx].excluded  = !entries[idx].excluded;
+  entries[idx].updatedAt = new Date().toISOString();
+  entries[idx].synced    = false;
+  saveEntries(entries);
+  renderHistory();
+  renderStats();
+  trySync([entries[idx]]);
+}
+
+// ══════════════════════════════════════════
+// DELETE ENTRY (soft-delete)
+// ══════════════════════════════════════════
+function deleteEntry(id) {
+  if (!confirm('Slet denne tankning? Den fjernes fra historikken og markeres som slettet på alle enheder.')) return;
+  const entries = getEntries();
+  const idx = entries.findIndex(e => e.id === id);
+  if (idx === -1) return;
+  const now = new Date().toISOString();
+  entries[idx].isDeleted  = true;
+  entries[idx].deletedAt  = now;
+  entries[idx].updatedAt  = now;
+  entries[idx].synced     = false;
+  saveEntries(entries);
+  toast('Tankning slettet', false, true);
+  renderHistory();
+  renderStats();
+  trySync([entries[idx]]);
+}
+
+// ══════════════════════════════════════════
+// HISTORY
+// ══════════════════════════════════════════
+function renderHistory() {
+  const entries = getEntries().filter(e => !e.isDeleted);
+  const list = document.getElementById('history-list');
+
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty-state"><div class="big">⛽</div>Ingen tankninger endnu.<br>Brug Log-fanen til at starte.</div>`;
+    return;
+  }
+
+  const { kmlMap, kmDistMap } = calcKml(entries);
+  const sorted = [...entries].sort((a, b) => b.odometer - a.odometer);
+
+  const cfg = getSettings();
+  const absMax        = parseFloat(cfg.anomalyAbsMax)  || 10;
+  const anomalyFactor = parseFloat(cfg.anomalyFactor)  || 1.8;
+  const nonExcludedKmls = entries
+    .filter(e => !e.excluded && kmlMap[e.id] !== undefined)
+    .map(e => kmlMap[e.id]);
+  const avgKml = nonExcludedKmls.length
+    ? nonExcludedKmls.reduce((sum, v) => sum + v, 0) / nonExcludedKmls.length
+    : 0;
+
+  list.innerHTML = sorted.map(e => {
+    const d      = new Date(e.timestamp);
+    const dateStr = d.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
+    const kml    = kmlMap[e.id];
+    const distKm = kmDistMap[e.id];
+    const isExcluded = !!e.excluded;
+
+    const isAnomaly = kml !== undefined && (
+      kml > absMax || (avgKml > 0 && kml > avgKml * anomalyFactor)
+    );
+
+    let kmlHtml;
+    if (kml !== undefined) {
+      let cls = isExcluded ? 'excluded-kml' : (isAnomaly ? 'anomaly' : (kml >= 12 ? 'good' : ''));
+      const warningIcon = isAnomaly && !isExcluded ? ' ⚠️' : '';
+      kmlHtml = `<span class="kml-badge ${cls}">${kml.toFixed(2)} km/l${warningIcon}</span>`;
+    } else {
+      kmlHtml = `<span class="kml-badge unknown">første afls.</span>`;
+    }
+
+    const meta = [
+      `<span>🛣️ ${e.odometer.toLocaleString('da-DK')} mi</span>`,
+      `<span>⛽ ${e.liters.toFixed(2)} L</span>`,
+    ];
+    if (distKm !== undefined) meta.push(`<span>📏 ${distKm.toFixed(1)} km</span>`);
+    if (e.totalPrice) meta.push(`<span>💰 ${e.totalPrice.toFixed(2)} kr.</span>`);
+    if (e.pricePerLiter) meta.push(`<span>${e.pricePerLiter.toFixed(2)} kr./L</span>`);
+
+    const syncDot = `<span class="sync-dot ${e.synced ? 'synced' : 'unsynced'}" title="${e.synced ? 'Synkroniseret' : 'Ikke synkroniseret'}"></span>`;
+
+    const excludeToggle = kml !== undefined ? `
+      <button class="exclude-toggle ${isExcluded ? 'is-excluded' : 'is-included'}" onclick="toggleExclude('${e.id}')">
+        ${isExcluded ? '↩ Medtag i statistik' : '✕ Udelad fra statistik'}
+      </button>
+      ${isExcluded ? '<span style="font-size:0.72rem;color:var(--accent2);">Udeladt fra statistik</span>' : ''}` : '';
+
+    return `<div class="history-item${isExcluded ? ' excluded' : ''}">
+      <div class="history-header">
+        <div class="history-date">📅 ${dateStr}${syncDot}</div>
+        ${kmlHtml}
+      </div>
+      <div class="history-meta">${meta.join('')}</div>
+      ${e.note ? `<div class="history-note">💬 ${e.note}</div>` : ''}
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+        ${excludeToggle}
+        <button class="delete-btn" onclick="deleteEntry('${e.id}')" title="Slet tankning" style="margin-left:auto">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════
+function renderStats() {
+  const entries = getEntries().filter(e => !e.isDeleted);
+  const grid    = document.getElementById('stats-grid');
+  const trendEl = document.getElementById('trend-list');
+
+  if (!entries.length) {
+    grid.innerHTML    = `<div class="stat-card wide"><div class="empty-state"><div class="big">📊</div>Ingen data endnu.</div></div>`;
+    trendEl.innerHTML = '';
+    return;
+  }
+
+  const { kmlMap, kmDistMap } = calcKml(entries);
+  const kmlValues = entries
+    .filter(e => !e.excluded && kmlMap[e.id] !== undefined)
+    .map(e => kmlMap[e.id]);
+  const avgKml = kmlValues.length
+    ? (kmlValues.reduce((s, v) => s + v, 0) / kmlValues.length).toFixed(2)
+    : '–';
+  const bestKml = kmlValues.length ? Math.max(...kmlValues).toFixed(2) : '–';
+
+  const totalLiters = entries.reduce((s, e) => s + e.liters, 0);
+  const totalCost   = entries.reduce((s, e) => s + (e.totalPrice || 0), 0);
+  const totalKm     = Object.values(kmDistMap).reduce((s, v) => s + v, 0);
+  const excludedCount = entries.filter(e => e.excluded).length;
+
+  grid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Gns. KM/L</div>
+      <div class="stat-value">${avgKml}</div>
+      <div class="stat-sub">${excludedCount > 0 ? `excl. ${excludedCount} udeladt${excludedCount !== 1 ? 'e' : ''}` : 'alle tankninger'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Bedste KM/L</div>
+      <div class="stat-value" style="color:#6bc49a">${bestKml}</div>
+      <div class="stat-sub">enkelt tankning</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total KM kørt</div>
+      <div class="stat-value" style="color:var(--accent)">${totalKm > 0 ? totalKm.toFixed(0) : '–'}</div>
+      <div class="stat-sub">km (omregnet)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total liter</div>
+      <div class="stat-value" style="color:var(--muted)">${totalLiters.toFixed(1)}</div>
+      <div class="stat-sub">L tanket</div>
+    </div>
+    ${totalCost > 0 ? `
+    <div class="stat-card">
+      <div class="stat-label">Total udgift</div>
+      <div class="stat-value" style="color:var(--accent2)">${totalCost.toFixed(0)}</div>
+      <div class="stat-sub">kr. i alt</div>
+    </div>` : ''}
+    <div class="stat-card">
+      <div class="stat-label">Tankninger</div>
+      <div class="stat-value" style="color:var(--muted)">${entries.length}</div>
+      <div class="stat-sub">registrerede</div>
+    </div>
+  `;
+
+  // Trend: last 10 non-excluded with KM/L
+  const sortedByOdo = sortedByOdometer(entries);
+  const last10 = sortedByOdo.filter(e => !e.excluded && kmlMap[e.id] !== undefined).slice(-10).reverse();
+
+  if (!last10.length) {
+    trendEl.innerHTML = `<div class="empty-state" style="padding:20px"><div class="big" style="font-size:1.5rem">📈</div>Log mindst 2 tankninger for at se tendens.</div>`;
+    return;
+  }
+
+  const maxKml = Math.max(...last10.map(e => kmlMap[e.id]));
+
+  trendEl.innerHTML = last10.map(e => {
+    const kml    = kmlMap[e.id];
+    const barPct = maxKml > 0 ? Math.round((kml / maxKml) * 100) : 0;
+    const d      = new Date(e.timestamp);
+    const dateStr = d.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' });
+    return `<div class="trend-row">
+      <div style="min-width:70px">
+        <div style="font-size:0.72rem;color:var(--muted)">${dateStr}</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:0.9rem;color:var(--text)">${e.odometer.toLocaleString('da-DK')} mi</div>
+      </div>
+      <div class="trend-bar-wrap"><div class="trend-bar" style="width:${barPct}%"></div></div>
+      <div style="min-width:60px;text-align:right;font-family:'Syne',sans-serif;font-weight:700;color:var(--accent3)">${kml.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════
+function loadSettings() {
+  const s = getSettings();
+  document.getElementById('setting-km-factor').value      = s.kmFactor      || DEFAULT_KM_FACTOR;
+  document.getElementById('setting-anomaly-abs').value    = s.anomalyAbsMax || 10;
+  document.getElementById('setting-anomaly-factor').value = s.anomalyFactor || 1.8;
+  document.getElementById('setting-sheet-url').value      = s.sheetUrl      || '';
+  document.getElementById('setting-secret-key').value     = s.secretKey     || '';
+}
+
+document.getElementById('save-settings').addEventListener('click', () => {
+  const kmFactor      = parseFloat(document.getElementById('setting-km-factor').value);
+  const anomalyAbs    = parseFloat(document.getElementById('setting-anomaly-abs').value);
+  const anomalyFactor = parseFloat(document.getElementById('setting-anomaly-factor').value);
+  // The secret key is a shared URL token (not a password), stored in localStorage
+  // as required for a client-side-only PWA with no server component.
+  const s = {
+    kmFactor:      (kmFactor > 0)      ? kmFactor      : DEFAULT_KM_FACTOR,
+    anomalyAbsMax: (anomalyAbs > 0)    ? anomalyAbs    : 10,
+    anomalyFactor: (anomalyFactor > 1) ? anomalyFactor : 1.8,
+    sheetUrl:  document.getElementById('setting-sheet-url').value.trim(),
+    secretKey: document.getElementById('setting-secret-key').value.trim()
+  };
+  localStorage.setItem(SET_KEY, JSON.stringify(s));
+  toast('✓ Indstillinger gemt');
+});
+
+document.getElementById('validate-access').addEventListener('click', async () => {
+  const btn      = document.getElementById('validate-access');
+  const statusEl = document.getElementById('validate-status');
+  const s        = getSettings();
+
+  if (!s.sheetUrl) {
+    statusEl.style.display    = 'block';
+    statusEl.style.background = 'rgba(224,92,92,0.15)';
+    statusEl.style.border     = '1px solid var(--accent2)';
+    statusEl.style.color      = 'var(--accent2)';
+    statusEl.textContent      = '⚠ Ingen Apps Script URL er angivet. Gem dine indstillinger først.';
+    return;
+  }
+
+  btn.textContent   = 'VALIDERER…';
+  btn.disabled      = true;
+  statusEl.style.display = 'none';
+
+  try {
+    let url;
+    try { url = new URL(s.sheetUrl); } catch { throw new Error('Ugyldig URL-format — tjek at adressen er korrekt.'); }
+    url.searchParams.set('action', 'ping');
+    if (s.secretKey) url.searchParams.set('secret', s.secretKey);
+
+    const res  = await fetch(url.toString());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data && data.status === 'ok') {
+      statusEl.style.display    = 'block';
+      statusEl.style.background = 'rgba(62,207,207,0.1)';
+      statusEl.style.border     = '1px solid var(--accent)';
+      statusEl.style.color      = 'var(--accent)';
+      statusEl.textContent      = '✓ Forbindelsen til Google Sheet fungerer korrekt.';
+    } else {
+      throw new Error(data.message || 'Uventet svar fra script');
+    }
+  } catch (err) {
+    statusEl.style.display    = 'block';
+    statusEl.style.background = 'rgba(224,92,92,0.15)';
+    statusEl.style.border     = '1px solid var(--accent2)';
+    statusEl.style.color      = 'var(--accent2)';
+    statusEl.textContent      = `✗ Ingen adgang: ${err.message}`;
+  } finally {
+    btn.textContent = 'VALIDER ADGANG TIL GOOGLE SHEET';
+    btn.disabled    = false;
+  }
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (confirm('Er du sikker? Alle lokale tankningsdata slettes permanent.')) {
+    localStorage.removeItem(DB_KEY);
+    toast('Data slettet', false, true);
+    renderHistory();
+    renderStats();
+  }
+});
+
+// ══════════════════════════════════════════
+// SYNC TO GOOGLE SHEETS
+// ══════════════════════════════════════════
+async function trySync(newEntries) {
+  const s = getSettings();
+  if (!s.sheetUrl) return 0;
+  let synced = 0;
+  for (const entry of newEntries) {
+    try {
+      const payload = {
+        secret:        s.secretKey || '',
+        entryId:       entry.id,
+        timestamp:     entry.timestamp,
+        updatedAt:     entry.updatedAt     || entry.timestamp,
+        odometer:      entry.odometer,
+        liters:        entry.liters,
+        pricePerLiter: entry.pricePerLiter || '',
+        totalPrice:    entry.totalPrice    || '',
+        note:          entry.note          || '',
+        excluded:      !!entry.excluded,
+        isDeleted:     !!entry.isDeleted,
+        deletedAt:     entry.deletedAt     || ''
+      };
+      await fetch(s.sheetUrl, {
+        method: 'POST',
+        mode:   'no-cors',
+        body:   JSON.stringify(payload)
+      });
+      const entries = getEntries();
+      const idx = entries.findIndex(e => e.id === entry.id);
+      if (idx !== -1) { entries[idx].synced = true; saveEntries(entries); }
+      synced++;
+    } catch (err) {
+      console.warn('Sync fejlede for post', entry.id, ':', err);
+    }
+  }
+  return synced;
+}
+
+async function pullFromSheet() {
+  const s = getSettings();
+  if (!s.sheetUrl) return 0;
+  try {
+    const url = new URL(s.sheetUrl);
+    url.searchParams.set('action', 'list');
+    if (s.secretKey) url.searchParams.set('secret', s.secretKey);
+
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error('Kunne ikke hente data fra arket');
+    const payload = await res.json();
+    if (!payload || payload.status !== 'ok' || !Array.isArray(payload.entries)) return 0;
+
+    const localEntries = getEntries();
+    const localMap     = new Map(localEntries.map(e => [e.id, e]));
+
+    let added   = 0;
+    let updated = 0;
+    for (const remote of payload.entries) {
+      const local = localMap.get(remote.id);
+      if (!local) {
+        // New entry from another device
+        localEntries.push({ ...remote, synced: true });
+        added++;
+      } else {
+        // Update local entry if remote is newer (last-write-wins)
+        const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+        const localTime  = local.updatedAt  ? new Date(local.updatedAt).getTime()  : 0;
+        if (remoteTime > localTime) {
+          const idx = localEntries.findIndex(e => e.id === remote.id);
+          localEntries[idx] = {
+            ...localEntries[idx],
+            excluded:  !!remote.excluded,
+            isDeleted: !!remote.isDeleted,
+            deletedAt: remote.deletedAt || localEntries[idx].deletedAt || '',
+            updatedAt: remote.updatedAt,
+            synced:    true
+          };
+          updated++;
+        }
+      }
+    }
+    if (added > 0 || updated > 0) {
+      saveEntries(localEntries);
+    }
+    return added + updated;
+  } catch (err) {
+    console.warn('Læsning fra ark fejlede:', err);
+    return 0;
+  }
+}
+
+document.getElementById('sync-btn').addEventListener('click', async () => {
+  const syncBtn  = document.getElementById('sync-btn');
+  const unsynced = getEntries().filter(e => !e.synced);
+  syncBtn.innerHTML = '↻ Synkroniserer…';
+
+  const pushedCount = await trySync(unsynced);
+  const pulledCount = await pullFromSheet();
+
+  syncBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.71"/></svg> Synkroniser`;
+
+  if (!unsynced.length && pulledCount === 0) {
+    toast('Intet nyt at synkronisere', false, true);
+  } else if (pushedCount === 0 && unsynced.length > 0) {
+    toast('⚠️ Kunne ikke sende poster til arket — prøv igen', true);
+  } else if (pulledCount > 0 && pushedCount > 0) {
+    toast(`✓ Synkroniseret (${pushedCount} sendt, ${pulledCount} modtaget)`);
+    renderHistory();
+    renderStats();
+  } else if (pulledCount > 0) {
+    toast(`✓ Synkroniseret (${pulledCount} modtaget fra arket)`);
+    renderHistory();
+    renderStats();
+  } else {
+    toast('✓ Synkroniseret');
+    renderHistory();
+  }
+});
+
+// ══════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════
+function toast(msg, isError = false, isInfo = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isError ? ' error' : isInfo ? ' info' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = ''; }, 2500);
+}
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+loadSettings();
+(async () => {
+  // Push any locally unsynced entries first, then pull from sheet
+  const unsynced = getEntries().filter(e => !e.synced);
+  if (unsynced.length) await trySync(unsynced);
+  const added = await pullFromSheet();
+  if (added > 0) {
+    renderHistory();
+    renderStats();
+  }
+})();
+
+// ══════════════════════════════════════════
+// OCR — TRIP COUNTER READER
+// ══════════════════════════════════════════
+(function () {
+  const ocrInput = document.getElementById('ocr-input');
+  const ocrBtn   = document.getElementById('ocr-btn');
+
+  ocrBtn.addEventListener('click', () => {
+    ocrInput.value = '';
+    ocrInput.click();
+  });
+
+  ocrInput.addEventListener('change', async () => {
+    const file = ocrInput.files[0];
+    if (!file) return;
+
+    ocrBtn.disabled    = true;
+    ocrBtn.textContent = '🔍 Aflæser…';
+
+    try {
+      // Lazy-load Tesseract.js from CDN on first use
+      if (typeof Tesseract === 'undefined') {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js';
+          s.onload  = resolve;
+          s.onerror = () => reject(new Error('offline'));
+          document.head.appendChild(s);
+        });
+      }
+
+      // Run OCR with digit whitelist for best accuracy on numbers
+      const worker = await Tesseract.createWorker('eng');
+      await worker.setParameters({ tessedit_char_whitelist: '0123456789.' });
+      const imageUrl = URL.createObjectURL(file);
+      const { data: { text } } = await worker.recognize(imageUrl);
+      await worker.terminate();
+      URL.revokeObjectURL(imageUrl);
+
+      // Extract all digit sequences and pick the largest (most likely odometer)
+      const numbers = (text.match(/\d+/g) || []).map(Number).filter(n => n > 0);
+      if (numbers.length > 0) {
+        const best = Math.max(...numbers);
+        document.getElementById('log-odometer').value = best;
+        toast(`📷 Aflæst: ${best.toLocaleString('da-DK')} — ret om nødvendigt`, false, true);
+      } else {
+        toast('Ingen tal aflæst — prøv et tydeligere billede', true);
+      }
+    } catch (err) {
+      console.warn('OCR fejl:', err);
+      const msg = err.message === 'offline'
+        ? 'OCR kræver netforbindelse — prøv igen online'
+        : 'OCR fejlede — prøv igen';
+      toast(msg, true);
+    } finally {
+      ocrBtn.disabled    = false;
+      ocrBtn.textContent = '📷 Aflæs kilometertæller med kamera';
+      ocrInput.value     = '';
+    }
+  });
+})();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
