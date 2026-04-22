@@ -1,4 +1,4 @@
-const CACHE = 'vingatefuel-v2';
+const CACHE = 'vingatefuel-v3';
 const ASSETS = [
   './',
   './index.html',
