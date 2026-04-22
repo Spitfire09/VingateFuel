@@ -1310,7 +1310,9 @@ loadSettings();
         if (sorted.length > 0) {
           const lastOdo = sorted[sorted.length - 1].odometer;
           if (best < lastOdo) {
-            // Try adding one digit — if result is plausible, suggest it
+            // Try adding one digit — if result is plausible, suggest it.
+            // The 1.3 threshold allows up to 30% increase over the last odometer,
+            // which covers realistic driving distances while avoiding false corrections.
             const candidate = best * 10;
             if (candidate >= lastOdo && candidate <= lastOdo * 1.3) {
               document.getElementById(fieldId).value = candidate;
@@ -1332,7 +1334,8 @@ loadSettings();
         const numbers = (text.match(/\d+(?:\.\d+)?/g) || []).map(Number).filter(n => n > 0);
         if (numbers.length === 0) { toast('Ingen tal aflæst — prøv et tydeligere billede', true); return; }
 
-        // Prefer values in plausible liters range (1–200); otherwise fall back to max
+        // Prefer values in plausible liters range (1–200 L covers any realistic fill-up);
+        // fall back to max if nothing in range (e.g. image shows only price)
         const candidates = numbers.filter(n => n >= 1 && n <= 200);
         const best = candidates.length > 0 ? Math.max(...candidates) : Math.max(...numbers);
 
