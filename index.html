@@ -325,6 +325,31 @@
     .ocr-btn:hover { border-color: var(--accent); color: var(--accent); }
     .ocr-btn:disabled { opacity: .45; cursor: not-allowed; }
 
+    .input-with-btn {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .input-with-btn input { flex: 1; }
+    .cam-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 1.1rem;
+      width: 46px;
+      height: 46px;
+      flex-shrink: 0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s;
+      padding: 0;
+    }
+    .cam-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .cam-btn:disabled { opacity: .45; cursor: not-allowed; }
+
     /* ── STATS ── */
     .stats-grid {
       display: grid;
@@ -489,15 +514,21 @@
 
       <div class="field-group">
         <div class="field-label">Kilometertæller (miles) <span class="required">*</span></div>
-        <input type="number" id="log-odometer" placeholder="f.eks. 87432" min="0" step="1" inputmode="decimal" />
-        <button type="button" class="ocr-btn" id="ocr-btn">📷 Aflæs kilometertæller med kamera</button>
-        <input type="file" id="ocr-input" accept="image/*" capture="environment" style="display:none" />
+        <div class="input-with-btn">
+          <input type="number" id="log-odometer" placeholder="f.eks. 87432" min="0" step="1" inputmode="decimal" />
+          <button type="button" class="cam-btn" id="ocr-odometer-btn" title="Aflæs kilometertæller med kamera">📷</button>
+          <input type="file" id="ocr-odometer-input" accept="image/*" capture="environment" style="display:none" />
+        </div>
       </div>
 
       <div class="field-row">
         <div class="field-group">
           <div class="field-label">Liter tanket <span class="required">*</span></div>
-          <input type="number" id="log-liters" placeholder="f.eks. 45.5" min="0.1" step="0.01" inputmode="decimal" />
+          <div class="input-with-btn">
+            <input type="number" id="log-liters" placeholder="f.eks. 45.5" min="0.1" step="0.01" inputmode="decimal" />
+            <button type="button" class="cam-btn" id="ocr-liters-btn" title="Aflæs liter med kamera">📷</button>
+            <input type="file" id="ocr-liters-input" accept="image/*" capture="environment" style="display:none" />
+          </div>
         </div>
         <div class="field-group">
           <div class="field-label">Pris pr. liter (kr.)</div>
@@ -1236,20 +1267,14 @@ loadSettings();
 // OCR — TRIP COUNTER READER
 // ══════════════════════════════════════════
 (function () {
-  const ocrInput = document.getElementById('ocr-input');
-  const ocrBtn   = document.getElementById('ocr-btn');
+  const ocrOdoBtn      = document.getElementById('ocr-odometer-btn');
+  const ocrOdoInput    = document.getElementById('ocr-odometer-input');
+  const ocrLitersBtn   = document.getElementById('ocr-liters-btn');
+  const ocrLitersInput = document.getElementById('ocr-liters-input');
 
-  ocrBtn.addEventListener('click', () => {
-    ocrInput.value = '';
-    ocrInput.click();
-  });
-
-  ocrInput.addEventListener('change', async () => {
-    const file = ocrInput.files[0];
-    if (!file) return;
-
-    ocrBtn.disabled    = true;
-    ocrBtn.textContent = '🔍 Aflæser…';
+  async function runOcr(file, btn, fieldId, type) {
+    btn.disabled    = true;
+    btn.textContent = '🔍';
 
     try {
       // Lazy-load Tesseract.js from CDN on first use
@@ -1271,15 +1296,57 @@ loadSettings();
       await worker.terminate();
       URL.revokeObjectURL(imageUrl);
 
-      // Extract all digit sequences and pick the largest (most likely odometer)
-      const numbers = (text.match(/\d+/g) || []).map(Number).filter(n => n > 0);
-      if (numbers.length > 0) {
-        const best = Math.max(...numbers);
-        document.getElementById('log-odometer').value = best;
+      if (type === 'odometer') {
+        // Extract integer sequences and pick the largest (most likely odometer)
+        const numbers = (text.match(/\d+/g) || []).map(Number).filter(n => n > 0);
+        if (numbers.length === 0) { toast('Ingen tal aflæst — prøv et tydeligere billede', true); return; }
+
+        let best = Math.max(...numbers);
+
+        // Validation: check if a digit might be missing vs. the previous reading
+        const entries = getEntries();
+        const active  = entries.filter(e => !e.isDeleted);
+        const sorted  = sortedByOdometer(active);
+        if (sorted.length > 0) {
+          const lastOdo = sorted[sorted.length - 1].odometer;
+          if (best < lastOdo) {
+            // Try adding one digit — if result is plausible, suggest it.
+            // The 1.3 threshold allows up to 30% increase over the last odometer,
+            // which covers realistic driving distances while avoiding false corrections.
+            const candidate = best * 10;
+            if (candidate >= lastOdo && candidate <= lastOdo * 1.3) {
+              document.getElementById(fieldId).value = candidate;
+              toast(`📷 Muligt manglende ciffer — rettet til ${candidate.toLocaleString('da-DK')} — ret om nødvendigt`, false, true);
+              return;
+            }
+            // Still lower than last reading — warn but set the value
+            document.getElementById(fieldId).value = best;
+            toast(`📷 Aflæst: ${best.toLocaleString('da-DK')} — lavere end forrige aflæsning, ret om nødvendigt`, true);
+            return;
+          }
+        }
+
+        document.getElementById(fieldId).value = best;
         toast(`📷 Aflæst: ${best.toLocaleString('da-DK')} — ret om nødvendigt`, false, true);
-      } else {
-        toast('Ingen tal aflæst — prøv et tydeligere billede', true);
+
+      } else if (type === 'liters') {
+        // Extract decimal numbers and pick the largest within a plausible range
+        const numbers = (text.match(/\d+(?:\.\d+)?/g) || []).map(Number).filter(n => n > 0);
+        if (numbers.length === 0) { toast('Ingen tal aflæst — prøv et tydeligere billede', true); return; }
+
+        // Prefer values in plausible liters range (1–200 L covers any realistic fill-up);
+        // fall back to max if nothing in range (e.g. image shows only price)
+        const candidates = numbers.filter(n => n >= 1 && n <= 200);
+        const best = candidates.length > 0 ? Math.max(...candidates) : Math.max(...numbers);
+
+        document.getElementById(fieldId).value = best;
+        if (best > 100) {
+          toast(`📷 Aflæst: ${best} L — over 100 liter, tjek venligst`, true);
+        } else {
+          toast(`📷 Aflæst: ${best} L — ret om nødvendigt`, false, true);
+        }
       }
+
     } catch (err) {
       console.warn('OCR fejl:', err);
       const msg = err.message === 'offline'
@@ -1287,10 +1354,25 @@ loadSettings();
         : 'OCR fejlede — prøv igen';
       toast(msg, true);
     } finally {
-      ocrBtn.disabled    = false;
-      ocrBtn.textContent = '📷 Aflæs kilometertæller med kamera';
-      ocrInput.value     = '';
+      btn.disabled    = false;
+      btn.textContent = '📷';
     }
+  }
+
+  ocrOdoBtn.addEventListener('click', () => { ocrOdoInput.value = ''; ocrOdoInput.click(); });
+  ocrOdoInput.addEventListener('change', async () => {
+    const file = ocrOdoInput.files[0];
+    if (!file) return;
+    await runOcr(file, ocrOdoBtn, 'log-odometer', 'odometer');
+    ocrOdoInput.value = '';
+  });
+
+  ocrLitersBtn.addEventListener('click', () => { ocrLitersInput.value = ''; ocrLitersInput.click(); });
+  ocrLitersInput.addEventListener('change', async () => {
+    const file = ocrLitersInput.files[0];
+    if (!file) return;
+    await runOcr(file, ocrLitersBtn, 'log-liters', 'liters');
+    ocrLitersInput.value = '';
   });
 })();
 
