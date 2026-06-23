@@ -483,6 +483,93 @@
       line-height: 1.6;
       margin-bottom: 16px;
     }
+
+    /* ── SERVICE STATUS ── */
+    .service-status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .service-status-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px;
+    }
+    .service-status-card.due   { border-color: rgba(240,160,64,.55); }
+    .service-status-card.overdue { border-color: rgba(224,92,92,.55); }
+    .service-status-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .service-status-icon { font-size: 1.3rem; margin-bottom: 4px; }
+    .service-status-value {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 0.85rem;
+    }
+    .service-status-value.ok      { color: #6bc49a; }
+    .service-status-value.due     { color: var(--accent3); }
+    .service-status-value.overdue { color: var(--accent2); }
+    .service-status-sub { font-size: 0.68rem; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+
+    /* ── TYPE / ACTION TOGGLE ── */
+    .type-toggle { display: flex; gap: 8px; }
+    .type-toggle button {
+      flex: 1;
+      padding: 10px 6px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      color: var(--muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.88rem;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .type-toggle button.active {
+      border-color: var(--accent3);
+      color: var(--accent3);
+      background: rgba(240,160,64,.08);
+    }
+
+    /* ── CHECK HISTORY ITEM ── */
+    .check-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      animation: fadeIn .3s ease;
+    }
+    .check-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .check-type-badge {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .check-type-badge.oil     { background: rgba(240,160,64,.15); color: var(--accent3); }
+    .check-type-badge.coolant { background: rgba(62,207,207,.12); color: var(--accent); }
+    .check-action-badge {
+      font-size: 0.72rem;
+      color: var(--muted);
+      padding: 2px 7px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
   </style>
 </head>
 <body>
@@ -499,6 +586,7 @@
   <button class="active" data-tab="log">⛽ Log</button>
   <button data-tab="history">📋 Historik</button>
   <button data-tab="stats">📊 Oversigt</button>
+  <button data-tab="service">🔧 Service</button>
   <button data-tab="settings">⚙️ Indstil.</button>
 </nav>
 
@@ -637,11 +725,78 @@
 
     <div class="card">
       <div class="card-title">
+        <div class="icon icon-amber">🛢️</div>
+        Olie- og kølevæskekontrol
+      </div>
+
+      <div class="settings-row">
+        <div class="settings-label">Olie — tjek-interval (km)</div>
+        <div class="settings-sub">Antal km imellem hvert olie-tjek. Du får en påmindelse efter tankning, når intervallet er nået. Standard: 500 km</div>
+        <input type="number" id="setting-oil-interval" placeholder="500" min="50" max="10000" step="50" inputmode="decimal" />
+      </div>
+
+      <div class="settings-row" style="border-bottom:none">
+        <div class="settings-label">Kølevæske — tjek-interval (km)</div>
+        <div class="settings-sub">Antal km imellem hvert kølevæske-tjek. Standard: 1000 km</div>
+        <input type="number" id="setting-coolant-interval" placeholder="1000" min="50" max="20000" step="50" inputmode="decimal" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
         <div class="icon icon-red">🗑️</div>
         Dataadministration
       </div>
       <button class="save-btn" id="clear-btn" style="background:transparent;color:var(--accent2);border:1.5px solid var(--accent2);">SLET ALLE LOKALE DATA</button>
     </div>
+
+  </div>
+
+  <!-- ════════ SERVICE TAB ════════ -->
+  <div class="tab" id="tab-service">
+
+    <div class="section-title">Status</div>
+    <div class="service-status-grid" id="service-status-grid">
+      <!-- Rendered by JS -->
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <div class="icon icon-amber">🔧</div>
+        Registrér tjek / påfyldning
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Type</div>
+        <div class="type-toggle" id="check-type-toggle">
+          <button class="active" data-type="oil">🛢️ Olie</button>
+          <button data-type="coolant">❄️ Kølevæske</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Handling</div>
+        <div class="type-toggle" id="check-action-toggle">
+          <button class="active" data-action="checked">✔ Tjekket</button>
+          <button data-action="topped_up">➕ Påfyldt</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Kilometertæller (miles) <span class="required">*</span></div>
+        <input type="number" id="check-odometer" placeholder="f.eks. 87432" min="0" step="1" inputmode="decimal" />
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Note (valgfrit)</div>
+        <textarea id="check-note" placeholder="f.eks. 'Olie OK', 'Niveau lavt — fyldt ½ L op'…"></textarea>
+      </div>
+
+      <button class="save-btn" id="save-check">GEM TJEK</button>
+    </div>
+
+    <div class="section-title" style="margin-top:4px">Log</div>
+    <div id="checks-list"></div>
 
   </div>
 
@@ -655,6 +810,7 @@
 // ══════════════════════════════════════════
 const DB_KEY     = 'vingatefuel_entries';
 const SET_KEY    = 'vingatefuel_settings';
+const CHECKS_KEY = 'vingatefuel_checks';
 const DEVICE_KEY = 'vingatefuel_device_id';
 const DEFAULT_KM_FACTOR = 1.60934;
 
@@ -698,6 +854,17 @@ function kmFactor() {
   return (f && f > 0) ? f : DEFAULT_KM_FACTOR;
 }
 
+function getChecks() {
+  try {
+    const checks = JSON.parse(localStorage.getItem(CHECKS_KEY) || '[]');
+    return Array.isArray(checks) ? checks : [];
+  } catch { return []; }
+}
+
+function saveChecks(arr) {
+  localStorage.setItem(CHECKS_KEY, JSON.stringify(arr));
+}
+
 // Sort entries ascending by odometer for KM/L calculation
 function sortedByOdometer(entries) {
   return [...entries].sort((a, b) => a.odometer - b.odometer);
@@ -733,7 +900,8 @@ document.querySelectorAll('nav button').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'history') renderHistory();
-    if (btn.dataset.tab === 'stats') renderStats();
+    if (btn.dataset.tab === 'stats')   renderStats();
+    if (btn.dataset.tab === 'service') renderServiceTab();
   });
 });
 
@@ -819,6 +987,7 @@ document.getElementById('save-log').addEventListener('click', () => {
 
   toast('✓ Tankning gemt');
   resetLogForm();
+  checkMaintenanceReminders(odometer);
   trySync([entry]);
 });
 
@@ -1036,23 +1205,29 @@ function renderStats() {
 // ══════════════════════════════════════════
 function loadSettings() {
   const s = getSettings();
-  document.getElementById('setting-km-factor').value      = s.kmFactor      || DEFAULT_KM_FACTOR;
-  document.getElementById('setting-anomaly-abs').value    = s.anomalyAbsMax || 10;
-  document.getElementById('setting-anomaly-factor').value = s.anomalyFactor || 1.8;
-  document.getElementById('setting-sheet-url').value      = s.sheetUrl      || '';
-  document.getElementById('setting-secret-key').value     = s.secretKey     || '';
+  document.getElementById('setting-km-factor').value       = s.kmFactor        || DEFAULT_KM_FACTOR;
+  document.getElementById('setting-anomaly-abs').value     = s.anomalyAbsMax   || 10;
+  document.getElementById('setting-anomaly-factor').value  = s.anomalyFactor   || 1.8;
+  document.getElementById('setting-sheet-url').value       = s.sheetUrl        || '';
+  document.getElementById('setting-secret-key').value      = s.secretKey       || '';
+  document.getElementById('setting-oil-interval').value    = s.oilInterval     || 500;
+  document.getElementById('setting-coolant-interval').value = s.coolantInterval || 1000;
 }
 
 document.getElementById('save-settings').addEventListener('click', () => {
   const kmFactor      = parseFloat(document.getElementById('setting-km-factor').value);
   const anomalyAbs    = parseFloat(document.getElementById('setting-anomaly-abs').value);
   const anomalyFactor = parseFloat(document.getElementById('setting-anomaly-factor').value);
+  const oilInterval     = parseFloat(document.getElementById('setting-oil-interval').value);
+  const coolantInterval = parseFloat(document.getElementById('setting-coolant-interval').value);
   // The secret key is a shared URL token (not a password), stored in localStorage
   // as required for a client-side-only PWA with no server component.
   const s = {
-    kmFactor:      (kmFactor > 0)      ? kmFactor      : DEFAULT_KM_FACTOR,
-    anomalyAbsMax: (anomalyAbs > 0)    ? anomalyAbs    : 10,
-    anomalyFactor: (anomalyFactor > 1) ? anomalyFactor : 1.8,
+    kmFactor:        (kmFactor > 0)        ? kmFactor        : DEFAULT_KM_FACTOR,
+    anomalyAbsMax:   (anomalyAbs > 0)      ? anomalyAbs      : 10,
+    anomalyFactor:   (anomalyFactor > 1)   ? anomalyFactor   : 1.8,
+    oilInterval:     (oilInterval > 0)     ? oilInterval     : 500,
+    coolantInterval: (coolantInterval > 0) ? coolantInterval : 1000,
     sheetUrl:  document.getElementById('setting-sheet-url').value.trim(),
     secretKey: document.getElementById('setting-secret-key').value.trim()
   };
@@ -1110,11 +1285,13 @@ document.getElementById('validate-access').addEventListener('click', async () =>
 });
 
 document.getElementById('clear-btn').addEventListener('click', () => {
-  if (confirm('Er du sikker? Alle lokale tankningsdata slettes permanent.')) {
+  if (confirm('Er du sikker? Alle lokale tanknings- og servicedata slettes permanent.')) {
     localStorage.removeItem(DB_KEY);
+    localStorage.removeItem(CHECKS_KEY);
     toast('Data slettet', false, true);
     renderHistory();
     renderStats();
+    renderServiceTab();
   }
 });
 
@@ -1379,6 +1556,217 @@ loadSettings();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// ══════════════════════════════════════════
+// SERVICE TAB — OIL & COOLANT CHECKS
+// ══════════════════════════════════════════
+
+// ── Toggle buttons (type & action) ──
+(function () {
+  document.getElementById('check-type-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    document.querySelectorAll('#check-type-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+  document.getElementById('check-action-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    document.querySelectorAll('#check-action-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+})();
+
+// ── Save check entry ──
+document.getElementById('save-check').addEventListener('click', () => {
+  const odometer = parseFloat(document.getElementById('check-odometer').value);
+  if (!odometer || odometer <= 0) return toast('Indtast gyldig kilometertæller-aflæsning', true);
+
+  const typeBtn   = document.querySelector('#check-type-toggle button.active');
+  const actionBtn = document.querySelector('#check-action-toggle button.active');
+  const type      = typeBtn   ? typeBtn.dataset.type     : 'oil';
+  const action    = actionBtn ? actionBtn.dataset.action : 'checked';
+  const note      = document.getElementById('check-note').value.trim();
+
+  const check = {
+    id:        `chk-${getDeviceId()}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    odometer,
+    type,
+    action,
+    note
+  };
+
+  const checks = getChecks();
+  checks.unshift(check);
+  saveChecks(checks);
+
+  document.getElementById('check-odometer').value = '';
+  document.getElementById('check-note').value     = '';
+
+  toast('✓ Tjek gemt');
+  renderServiceTab();
+});
+
+// ── Delete a check entry ──
+function deleteCheck(id) {
+  if (!confirm('Slet dette tjek fra loggen?')) return;
+  const checks = getChecks().filter(c => c.id !== id);
+  saveChecks(checks);
+  toast('Tjek slettet', false, true);
+  renderServiceTab();
+}
+
+// ── Render service tab ──
+function renderServiceTab() {
+  renderServiceStatus();
+  renderChecksList();
+}
+
+function renderServiceStatus() {
+  const checks  = getChecks();
+  const factor  = kmFactor();
+  const s       = getSettings();
+  const oilInterval     = parseFloat(s.oilInterval)     || 500;
+  const coolantInterval = parseFloat(s.coolantInterval) || 1000;
+
+  // Get the latest entry for each type
+  const lastOil     = checks.find(c => c.type === 'oil');
+  const lastCoolant = checks.find(c => c.type === 'coolant');
+
+  // Get current highest odometer from fuel entries
+  const fuelEntries = getEntries().filter(e => !e.isDeleted);
+  const sortedFuel  = sortedByOdometer(fuelEntries);
+  const currentOdo  = sortedFuel.length ? sortedFuel[sortedFuel.length - 1].odometer : null;
+
+  const grid = document.getElementById('service-status-grid');
+  grid.innerHTML = [
+    buildStatusCard('oil',     '🛢️', 'Olie',      lastOil,     oilInterval,     currentOdo, factor),
+    buildStatusCard('coolant', '❄️', 'Kølevæske', lastCoolant, coolantInterval, currentOdo, factor)
+  ].join('');
+}
+
+function buildStatusCard(type, icon, label, lastCheck, interval, currentOdo, factor) {
+  let statusClass  = '';
+  let statusText   = '';
+  let subText      = '';
+  let cardClass    = '';
+
+  if (!lastCheck) {
+    statusClass = 'due';
+    statusText  = 'Ingen registreret';
+    subText     = `Interval: ${interval.toLocaleString('da-DK')} km`;
+    cardClass   = 'due';
+  } else {
+    const dateStr = new Date(lastCheck.timestamp).toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
+    const kmSince = currentOdo !== null ? ((currentOdo - lastCheck.odometer) * factor) : null;
+    const remaining = kmSince !== null ? (interval - kmSince) : null;
+
+    if (remaining === null) {
+      statusClass = 'ok';
+      statusText  = 'OK';
+      subText     = `${dateStr} ved ${lastCheck.odometer.toLocaleString('da-DK')} mi`;
+    } else if (remaining <= 0) {
+      statusClass = 'overdue';
+      cardClass   = 'overdue';
+      statusText  = `Overskredet ${Math.abs(remaining).toFixed(0)} km`;
+      subText     = `${dateStr} · ${kmSince.toFixed(0)} km siden`;
+    } else if (remaining < interval * 0.15) {
+      statusClass = 'due';
+      cardClass   = 'due';
+      statusText  = `${remaining.toFixed(0)} km tilbage`;
+      subText     = `${dateStr} · ${kmSince.toFixed(0)} km siden`;
+    } else {
+      statusClass = 'ok';
+      statusText  = `${remaining.toFixed(0)} km tilbage`;
+      subText     = `${dateStr} · ${kmSince.toFixed(0)} km siden`;
+    }
+  }
+
+  return `<div class="service-status-card ${cardClass}">
+    <div class="service-status-icon">${icon}</div>
+    <div class="service-status-label">${label}</div>
+    <div class="service-status-value ${statusClass}">${statusText}</div>
+    <div class="service-status-sub">${subText}</div>
+  </div>`;
+}
+
+function renderChecksList() {
+  const checks = getChecks();
+  const el     = document.getElementById('checks-list');
+
+  if (!checks.length) {
+    el.innerHTML = `<div class="empty-state"><div class="big">🔧</div>Ingen tjek registreret endnu.<br>Brug formularen ovenfor til at starte.</div>`;
+    return;
+  }
+
+  const factor = kmFactor();
+  // Build a map of "previous check odometer" per type for km-since display
+  const oilChecks     = checks.filter(c => c.type === 'oil').sort((a, b) => b.odometer - a.odometer);
+  const coolantChecks = checks.filter(c => c.type === 'coolant').sort((a, b) => b.odometer - a.odometer);
+
+  el.innerHTML = checks.map((c, i) => {
+    const d       = new Date(c.timestamp);
+    const dateStr = d.toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' });
+    const typeLabel  = c.type === 'oil' ? 'Olie' : 'Kølevæske';
+    const actionLabel = c.action === 'topped_up' ? 'Påfyldt' : 'Tjekket';
+
+    // km since previous check of same type
+    const sameType    = (c.type === 'oil' ? oilChecks : coolantChecks);
+    const prevIdx     = sameType.findIndex(x => x.id === c.id);
+    const prevCheck   = sameType[prevIdx + 1];
+    const kmSincePrev = prevCheck ? ((c.odometer - prevCheck.odometer) * factor).toFixed(0) : null;
+
+    return `<div class="check-item">
+      <div class="check-item-header">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="check-type-badge ${c.type}">${typeLabel}</span>
+          <span class="check-action-badge">${actionLabel}</span>
+        </div>
+        <div style="font-family:'Syne',sans-serif;font-size:0.8rem;color:var(--muted)">📅 ${dateStr}</div>
+      </div>
+      <div style="font-size:0.78rem;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
+        <span>🛣️ ${c.odometer.toLocaleString('da-DK')} mi</span>
+        ${kmSincePrev !== null ? `<span>📏 ${Number(kmSincePrev).toLocaleString('da-DK')} km siden sidst</span>` : ''}
+      </div>
+      ${c.note ? `<div class="history-note">💬 ${c.note}</div>` : ''}
+      <div style="margin-top:8px;text-align:right">
+        <button class="delete-btn" onclick="deleteCheck('${c.id}')" title="Slet tjek">🗑️</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Maintenance reminders (called after fuel log save) ──
+function checkMaintenanceReminders(currentOdo) {
+  const checks  = getChecks();
+  const factor  = kmFactor();
+  const s       = getSettings();
+  const oilInterval     = parseFloat(s.oilInterval)     || 500;
+  const coolantInterval = parseFloat(s.coolantInterval) || 1000;
+
+  const lastOil     = checks.find(c => c.type === 'oil');
+  const lastCoolant = checks.find(c => c.type === 'coolant');
+
+  const oilKm     = lastOil     ? (currentOdo - lastOil.odometer)     * factor : null;
+  const coolantKm = lastCoolant ? (currentOdo - lastCoolant.odometer) * factor : null;
+
+  const oilDue     = !lastOil     || oilKm     >= oilInterval;
+  const coolantDue = !lastCoolant || coolantKm >= coolantInterval;
+
+  if (oilDue && coolantDue) {
+    const oilMsg     = lastOil     ? `${oilKm.toFixed(0)} km siden sidst` : 'aldrig registreret';
+    const coolantMsg = lastCoolant ? `${coolantKm.toFixed(0)} km siden sidst` : 'aldrig registreret';
+    alert(`🛢️ Olie og ❄️ Kølevæske skal tjekkes!\n\nOlie: ${oilMsg} (interval: ${oilInterval} km)\nKølevæske: ${coolantMsg} (interval: ${coolantInterval} km)\n\nGå til Service-fanen for at registrere et tjek.`);
+  } else if (oilDue) {
+    const msg = lastOil ? `${oilKm.toFixed(0)} km siden sidst (interval: ${oilInterval} km)` : 'aldrig registreret';
+    alert(`🛢️ Tid til olie-tjek!\n\n${msg}\n\nGå til Service-fanen for at registrere et tjek.`);
+  } else if (coolantDue) {
+    const msg = lastCoolant ? `${coolantKm.toFixed(0)} km siden sidst (interval: ${coolantInterval} km)` : 'aldrig registreret';
+    alert(`❄️ Tid til kølevæske-tjek!\n\n${msg}\n\nGå til Service-fanen for at registrere et tjek.`);
+  }
+}
+
 </script>
 </body>
 </html>
