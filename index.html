@@ -833,6 +833,10 @@ function generateEntryId() {
   return `${getDeviceId()}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function generateCheckId() {
+  return `chk-${getDeviceId()}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function getEntries() {
   try {
     const entries = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
@@ -857,7 +861,22 @@ function kmFactor() {
 function getChecks() {
   try {
     const checks = JSON.parse(localStorage.getItem(CHECKS_KEY) || '[]');
-    return Array.isArray(checks) ? checks : [];
+    if (!Array.isArray(checks)) return [];
+    return checks.map(c => {
+      const timestamp = c.timestamp || new Date().toISOString();
+      return {
+        id:        c.id || generateCheckId(),
+        timestamp,
+        updatedAt: c.updatedAt || timestamp,
+        odometer:  Number(c.odometer) || 0,
+        type:      (c.type === 'coolant') ? 'coolant' : 'oil',
+        action:    (c.action === 'topped_up') ? 'topped_up' : 'checked',
+        note:      c.note || '',
+        isDeleted: !!c.isDeleted,
+        deletedAt: c.deletedAt || '',
+        synced:    !!c.synced
+      };
+    });
   } catch { return []; }
 }
 
@@ -1334,6 +1353,44 @@ async function trySync(newEntries) {
   return synced;
 }
 
+async function trySyncChecks(newChecks) {
+  const s = getSettings();
+  if (!s.sheetUrl) return 0;
+  let synced = 0;
+  for (const check of newChecks) {
+    try {
+      const payload = {
+        secret:     s.secretKey || '',
+        recordType: 'check',
+        checkId:    check.id,
+        timestamp:  check.timestamp,
+        updatedAt:  check.updatedAt || check.timestamp,
+        odometer:   check.odometer,
+        checkType:  check.type,
+        action:     check.action,
+        note:       check.note || '',
+        isDeleted:  !!check.isDeleted,
+        deletedAt:  check.deletedAt || ''
+      };
+      await fetch(s.sheetUrl, {
+        method: 'POST',
+        mode:   'no-cors',
+        body:   JSON.stringify(payload)
+      });
+      const checks = getChecks();
+      const idx = checks.findIndex(c => c.id === check.id);
+      if (idx !== -1) {
+        checks[idx].synced = true;
+        saveChecks(checks);
+      }
+      synced++;
+    } catch (err) {
+      console.warn('Sync fejlede for tjek', check.id, ':', err);
+    }
+  }
+  return synced;
+}
+
 async function pullFromSheet() {
   const s = getSettings();
   if (!s.sheetUrl) return 0;
@@ -1347,17 +1404,20 @@ async function pullFromSheet() {
     const payload = await res.json();
     if (!payload || payload.status !== 'ok' || !Array.isArray(payload.entries)) return 0;
 
-    const localEntries = getEntries();
-    const localMap     = new Map(localEntries.map(e => [e.id, e]));
+    const localEntries  = getEntries();
+    const localMap      = new Map(localEntries.map(e => [e.id, e]));
+    const remoteChecks  = Array.isArray(payload.checks) ? payload.checks : [];
+    const localChecks   = getChecks();
+    const localCheckMap = new Map(localChecks.map(c => [c.id, c]));
 
-    let added   = 0;
-    let updated = 0;
+    let addedEntries   = 0;
+    let updatedEntries = 0;
     for (const remote of payload.entries) {
       const local = localMap.get(remote.id);
       if (!local) {
         // New entry from another device
         localEntries.push({ ...remote, synced: true });
-        added++;
+        addedEntries++;
       } else {
         // Update local entry if remote is newer (last-write-wins)
         const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
@@ -1372,14 +1432,58 @@ async function pullFromSheet() {
             updatedAt: remote.updatedAt,
             synced:    true
           };
-          updated++;
+          updatedEntries++;
         }
       }
     }
-    if (added > 0 || updated > 0) {
+    if (addedEntries > 0 || updatedEntries > 0) {
       saveEntries(localEntries);
     }
-    return added + updated;
+
+    let addedChecks = 0;
+    let updatedChecks = 0;
+    for (const remote of remoteChecks) {
+      const local = localCheckMap.get(remote.id);
+      if (!local) {
+        localChecks.push({
+          id:        remote.id,
+          timestamp: remote.timestamp,
+          updatedAt: remote.updatedAt || remote.timestamp,
+          odometer:  Number(remote.odometer) || 0,
+          type:      remote.type === 'coolant' ? 'coolant' : 'oil',
+          action:    remote.action === 'topped_up' ? 'topped_up' : 'checked',
+          note:      remote.note || '',
+          isDeleted: !!remote.isDeleted,
+          deletedAt: remote.deletedAt || '',
+          synced:    true
+        });
+        addedChecks++;
+      } else {
+        const remoteTime = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+        const localTime  = local.updatedAt  ? new Date(local.updatedAt).getTime()  : 0;
+        if (remoteTime > localTime) {
+          const idx = localChecks.findIndex(c => c.id === remote.id);
+          localChecks[idx] = {
+            ...localChecks[idx],
+            timestamp: remote.timestamp || localChecks[idx].timestamp,
+            updatedAt: remote.updatedAt || localChecks[idx].updatedAt,
+            odometer:  Number(remote.odometer) || 0,
+            type:      remote.type === 'coolant' ? 'coolant' : 'oil',
+            action:    remote.action === 'topped_up' ? 'topped_up' : 'checked',
+            note:      remote.note || '',
+            isDeleted: !!remote.isDeleted,
+            deletedAt: remote.deletedAt || '',
+            synced:    true
+          };
+          updatedChecks++;
+        }
+      }
+    }
+    if (addedChecks > 0 || updatedChecks > 0) {
+      saveChecks(localChecks);
+    }
+
+    return addedEntries + updatedEntries + addedChecks + updatedChecks;
   } catch (err) {
     console.warn('Læsning fra ark fejlede:', err);
     return 0;
@@ -1387,30 +1491,37 @@ async function pullFromSheet() {
 }
 
 document.getElementById('sync-btn').addEventListener('click', async () => {
-  const syncBtn  = document.getElementById('sync-btn');
-  const unsynced = getEntries().filter(e => !e.synced);
+  const syncBtn         = document.getElementById('sync-btn');
+  const unsyncedEntries = getEntries().filter(e => !e.synced);
+  const unsyncedChecks  = getChecks().filter(c => !c.synced);
+  const unsyncedTotal   = unsyncedEntries.length + unsyncedChecks.length;
   syncBtn.innerHTML = '↻ Synkroniserer…';
 
-  const pushedCount = await trySync(unsynced);
+  const pushedEntries = await trySync(unsyncedEntries);
+  const pushedChecks  = await trySyncChecks(unsyncedChecks);
+  const pushedCount   = pushedEntries + pushedChecks;
   const pulledCount = await pullFromSheet();
 
   syncBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.71"/></svg> Synkroniser`;
 
-  if (!unsynced.length && pulledCount === 0) {
+  if (!unsyncedTotal && pulledCount === 0) {
     toast('Intet nyt at synkronisere', false, true);
-  } else if (pushedCount === 0 && unsynced.length > 0) {
+  } else if (pushedCount === 0 && unsyncedTotal > 0) {
     toast('⚠️ Kunne ikke sende poster til arket — prøv igen', true);
   } else if (pulledCount > 0 && pushedCount > 0) {
     toast(`✓ Synkroniseret (${pushedCount} sendt, ${pulledCount} modtaget)`);
     renderHistory();
     renderStats();
+    renderServiceTab();
   } else if (pulledCount > 0) {
     toast(`✓ Synkroniseret (${pulledCount} modtaget fra arket)`);
     renderHistory();
     renderStats();
+    renderServiceTab();
   } else {
     toast('✓ Synkroniseret');
     renderHistory();
+    renderServiceTab();
   }
 });
 
@@ -1431,12 +1542,15 @@ function toast(msg, isError = false, isInfo = false) {
 loadSettings();
 (async () => {
   // Push any locally unsynced entries first, then pull from sheet
-  const unsynced = getEntries().filter(e => !e.synced);
-  if (unsynced.length) await trySync(unsynced);
+  const unsyncedEntries = getEntries().filter(e => !e.synced);
+  const unsyncedChecks  = getChecks().filter(c => !c.synced);
+  if (unsyncedEntries.length) await trySync(unsyncedEntries);
+  if (unsyncedChecks.length) await trySyncChecks(unsyncedChecks);
   const added = await pullFromSheet();
   if (added > 0) {
     renderHistory();
     renderStats();
+    renderServiceTab();
   }
 })();
 
@@ -1587,14 +1701,19 @@ document.getElementById('save-check').addEventListener('click', () => {
   const type      = typeBtn   ? typeBtn.dataset.type     : 'oil';
   const action    = actionBtn ? actionBtn.dataset.action : 'checked';
   const note      = document.getElementById('check-note').value.trim();
+  const now       = new Date().toISOString();
 
   const check = {
-    id:        `chk-${getDeviceId()}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: new Date().toISOString(),
+    id:        generateCheckId(),
+    timestamp: now,
+    updatedAt: now,
     odometer,
     type,
     action,
-    note
+    note,
+    isDeleted: false,
+    deletedAt: '',
+    synced: false
   };
 
   const checks = getChecks();
@@ -1606,15 +1725,24 @@ document.getElementById('save-check').addEventListener('click', () => {
 
   toast('✓ Tjek gemt');
   renderServiceTab();
+  trySyncChecks([check]);
 });
 
 // ── Delete a check entry ──
 function deleteCheck(id) {
   if (!confirm('Slet dette tjek fra loggen?')) return;
-  const checks = getChecks().filter(c => c.id !== id);
+  const checks = getChecks();
+  const idx = checks.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  const now = new Date().toISOString();
+  checks[idx].isDeleted = true;
+  checks[idx].deletedAt = now;
+  checks[idx].updatedAt = now;
+  checks[idx].synced    = false;
   saveChecks(checks);
   toast('Tjek slettet', false, true);
   renderServiceTab();
+  trySyncChecks([checks[idx]]);
 }
 
 // ── Render service tab ──
@@ -1624,7 +1752,7 @@ function renderServiceTab() {
 }
 
 function renderServiceStatus() {
-  const checks  = getChecks();
+  const checks  = getChecks().filter(c => !c.isDeleted);
   const factor  = kmFactor();
   const s       = getSettings();
   const oilInterval     = parseFloat(s.oilInterval)     || 500;
@@ -1692,7 +1820,7 @@ function buildStatusCard(type, icon, label, lastCheck, interval, currentOdo, fac
 }
 
 function renderChecksList() {
-  const checks = getChecks();
+  const checks = getChecks().filter(c => !c.isDeleted);
   const el     = document.getElementById('checks-list');
 
   if (!checks.length) {
@@ -1739,7 +1867,7 @@ function renderChecksList() {
 
 // ── Maintenance reminders (called after fuel log save) ──
 function checkMaintenanceReminders(currentOdo) {
-  const checks  = getChecks();
+  const checks  = getChecks().filter(c => !c.isDeleted);
   const factor  = kmFactor();
   const s       = getSettings();
   const oilInterval     = parseFloat(s.oilInterval)     || 500;

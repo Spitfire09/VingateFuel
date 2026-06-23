@@ -11,27 +11,13 @@
 // 6. Kør som: Dig selv
 //    Adgang: Alle (du er den eneste der kender URL'en)
 // 7. Kopiér URL og indsæt i appen under Indstillinger
-//
-// Kolonner:
-//   A  Dato              (1)
-//   B  Tidspunkt         (2)
-//   C  Odometer (miles)  (3)
-//   D  Liter             (4)
-//   E  Pris pr. liter    (5)
-//   F  Total pris        (6)
-//   G  Note              (7)
-//   H  ISO Timestamp     (8)
-//   I  Entry ID          (9)
-//   J  Udeladt           (10)  ← ny
-//   K  Slettet           (11)  ← ny
-//   L  Sidst opdateret   (12)  ← ny
 // ══════════════════════════════════════════════════════
 
-const SECRET_TOKEN = ''; // ← SKIFT DETTE til dit eget hemmelige token!
-const SHEET_NAME   = 'Tankninger';
+const SECRET_TOKEN     = ''; // ← SKIFT DETTE til dit eget hemmelige token!
+const SHEET_NAME       = 'Tankninger';
+const CHECK_SHEET_NAME = 'ServiceTjek';
 
-// Ensure the sheet has all 12 header columns (upgrades older sheets)
-function ensureHeaders(sheet) {
+function ensureFuelHeaders(sheet) {
   const lastCol = sheet.getLastColumn();
   if (lastCol < 10) {
     sheet.getRange(1, 10).setValue('Udeladt');
@@ -50,6 +36,91 @@ function ensureHeaders(sheet) {
   }
 }
 
+function ensureCheckHeaders(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 8) {
+    sheet.getRange(1, 8).setValue('Note');
+    sheet.getRange(1, 8).setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
+    sheet.setColumnWidth(8, 250);
+  }
+  if (lastCol < 9) {
+    sheet.getRange(1, 9).setValue('Slettet');
+    sheet.getRange(1, 9).setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
+    sheet.setColumnWidth(9, 80);
+  }
+  if (lastCol < 10) {
+    sheet.getRange(1, 10).setValue('Slettet tidspunkt');
+    sheet.getRange(1, 10).setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
+    sheet.setColumnWidth(10, 180);
+  }
+  if (lastCol < 11) {
+    sheet.getRange(1, 11).setValue('Sidst opdateret');
+    sheet.getRange(1, 11).setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
+    sheet.setColumnWidth(11, 180);
+  }
+}
+
+function getOrCreateFuelSheet(ss) {
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+    sheet.appendRow([
+      'Dato', 'Tidspunkt', 'Odometer (miles)',
+      'Liter', 'Pris pr. liter (kr.)', 'Total pris (kr.)',
+      'Note', 'ISO Timestamp', 'Entry ID',
+      'Udeladt', 'Slettet', 'Sidst opdateret'
+    ]);
+    const header = sheet.getRange(1, 1, 1, 12);
+    header.setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 100);
+    sheet.setColumnWidth(2, 80);
+    sheet.setColumnWidth(3, 140);
+    sheet.setColumnWidth(4, 80);
+    sheet.setColumnWidth(5, 140);
+    sheet.setColumnWidth(6, 130);
+    sheet.setColumnWidth(7, 250);
+    sheet.setColumnWidth(8, 180);
+    sheet.setColumnWidth(9, 220);
+    sheet.setColumnWidth(10, 80);
+    sheet.setColumnWidth(11, 80);
+    sheet.setColumnWidth(12, 180);
+  } else {
+    ensureFuelHeaders(sheet);
+  }
+  return sheet;
+}
+
+function getOrCreateCheckSheet(ss) {
+  let sheet = ss.getSheetByName(CHECK_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CHECK_SHEET_NAME);
+    sheet.appendRow([
+      'Dato', 'Tidspunkt', 'Odometer (miles)',
+      'Type', 'Handling', 'ISO Timestamp',
+      'Check ID', 'Note', 'Slettet',
+      'Slettet tidspunkt', 'Sidst opdateret'
+    ]);
+    const header = sheet.getRange(1, 1, 1, 11);
+    header.setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 100);
+    sheet.setColumnWidth(2, 80);
+    sheet.setColumnWidth(3, 140);
+    sheet.setColumnWidth(4, 100);
+    sheet.setColumnWidth(5, 110);
+    sheet.setColumnWidth(6, 180);
+    sheet.setColumnWidth(7, 220);
+    sheet.setColumnWidth(8, 250);
+    sheet.setColumnWidth(9, 80);
+    sheet.setColumnWidth(10, 180);
+    sheet.setColumnWidth(11, 180);
+  } else {
+    ensureCheckHeaders(sheet);
+  }
+  return sheet;
+}
+
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
@@ -60,49 +131,79 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const ss        = SpreadsheetApp.getActiveSpreadsheet();
-    const timestamp = new Date(data.timestamp);
-    const formattedDate = Utilities.formatDate(timestamp, Session.getScriptTimeZone(), 'dd-MM-yyyy');
-    const formattedTime = Utilities.formatDate(timestamp, Session.getScriptTimeZone(), 'HH:mm');
+    const ss          = SpreadsheetApp.getActiveSpreadsheet();
+    const timestamp   = new Date(data.timestamp);
+    const timezone    = Session.getScriptTimeZone();
+    const dateValue   = isNaN(timestamp) ? new Date() : timestamp;
+    const formattedDate = Utilities.formatDate(dateValue, timezone, 'dd-MM-yyyy');
+    const formattedTime = Utilities.formatDate(dateValue, timezone, 'HH:mm');
+    const recordType    = data.recordType === 'check' ? 'check' : 'fuel';
 
-    let sheet = ss.getSheetByName(SHEET_NAME);
-    if (!sheet) {
-      sheet = ss.insertSheet(SHEET_NAME);
+    if (recordType === 'check') {
+      const sheet = getOrCreateCheckSheet(ss);
+      const incomingUpdatedAt = data.updatedAt || data.timestamp || '';
+
+      if (data.checkId && sheet.getLastRow() > 1) {
+        const lastRow      = sheet.getLastRow();
+        const idValues     = sheet.getRange(2, 7, lastRow - 1, 1).getValues().flat();
+        const existingIdx  = idValues.findIndex(id => id === data.checkId);
+
+        if (existingIdx !== -1) {
+          const sheetRow        = existingIdx + 2;
+          const existingUpdated = sheet.getRange(sheetRow, 11).getValue();
+          const shouldUpdate    = incomingUpdatedAt && (
+            !existingUpdated ||
+            (!isNaN(new Date(incomingUpdatedAt)) && new Date(incomingUpdatedAt) > new Date(existingUpdated))
+          );
+
+          if (shouldUpdate) {
+            sheet.getRange(sheetRow, 1).setValue(formattedDate);
+            sheet.getRange(sheetRow, 2).setValue(formattedTime);
+            sheet.getRange(sheetRow, 3).setValue(data.odometer || '');
+            sheet.getRange(sheetRow, 4).setValue(data.checkType || 'oil');
+            sheet.getRange(sheetRow, 5).setValue(data.action || 'checked');
+            sheet.getRange(sheetRow, 6).setValue(data.timestamp || '');
+            sheet.getRange(sheetRow, 8).setValue(data.note || '');
+            sheet.getRange(sheetRow, 9).setValue(data.isDeleted ? 'Ja' : 'Nej');
+            sheet.getRange(sheetRow, 10).setValue(data.deletedAt || '');
+            sheet.getRange(sheetRow, 11).setValue(incomingUpdatedAt);
+          }
+
+          return ContentService
+            .createTextOutput(JSON.stringify({ status: 'ok', message: 'updated' }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+
       sheet.appendRow([
-        'Dato', 'Tidspunkt', 'Odometer (miles)',
-        'Liter', 'Pris pr. liter (kr.)', 'Total pris (kr.)',
-        'Note', 'ISO Timestamp', 'Entry ID',
-        'Udeladt', 'Slettet', 'Sidst opdateret'
+        formattedDate,
+        formattedTime,
+        data.odometer || '',
+        data.checkType || 'oil',
+        data.action || 'checked',
+        data.timestamp || '',
+        data.checkId || '',
+        data.note || '',
+        data.isDeleted ? 'Ja' : 'Nej',
+        data.deletedAt || '',
+        incomingUpdatedAt
       ]);
-      const header = sheet.getRange(1, 1, 1, 12);
-      header.setFontWeight('bold').setBackground('#1a2a38').setFontColor('#f0a040');
-      sheet.setFrozenRows(1);
-      sheet.setColumnWidth(1, 100);
-      sheet.setColumnWidth(2, 80);
-      sheet.setColumnWidth(3, 140);
-      sheet.setColumnWidth(4, 80);
-      sheet.setColumnWidth(5, 140);
-      sheet.setColumnWidth(6, 130);
-      sheet.setColumnWidth(7, 250);
-      sheet.setColumnWidth(8, 180);
-      sheet.setColumnWidth(9, 220);
-      sheet.setColumnWidth(10, 80);
-      sheet.setColumnWidth(11, 80);
-      sheet.setColumnWidth(12, 180);
-    } else {
-      ensureHeaders(sheet);
+
+      return ContentService
+        .createTextOutput(JSON.stringify({ status: 'ok' }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
+    const sheet = getOrCreateFuelSheet(ss);
     const incomingUpdatedAt = data.updatedAt || data.timestamp || '';
 
-    // Check if entryId already exists → update metadata if incoming is newer
     if (data.entryId && sheet.getLastRow() > 1) {
       const lastRow      = sheet.getLastRow();
       const idValues     = sheet.getRange(2, 9, lastRow - 1, 1).getValues().flat();
       const existingIdx  = idValues.findIndex(id => id === data.entryId);
 
       if (existingIdx !== -1) {
-        const sheetRow        = existingIdx + 2; // 1-indexed + header
+        const sheetRow        = existingIdx + 2;
         const existingUpdated = sheet.getRange(sheetRow, 12).getValue();
         const shouldUpdate    = incomingUpdatedAt && (
           !existingUpdated ||
@@ -121,7 +222,6 @@ function doPost(e) {
       }
     }
 
-    // New entry — append row
     sheet.appendRow([
       formattedDate,
       formattedTime,
@@ -160,15 +260,17 @@ function doGet(e) {
     }
 
     if (action === 'list') {
-      const ss    = SpreadsheetApp.getActiveSpreadsheet();
-      const sheet = ss.getSheetByName(SHEET_NAME);
+      const ss         = SpreadsheetApp.getActiveSpreadsheet();
+      const fuelSheet  = ss.getSheetByName(SHEET_NAME);
+      const checkSheet = ss.getSheetByName(CHECK_SHEET_NAME);
       const entries = [];
+      const checks  = [];
 
-      if (sheet && sheet.getLastRow() > 1) {
-        const dataLastCol = sheet.getLastColumn();
-        const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, dataLastCol).getValues();
+      if (fuelSheet && fuelSheet.getLastRow() > 1) {
+        const dataLastCol = fuelSheet.getLastColumn();
+        const rows = fuelSheet.getRange(2, 1, fuelSheet.getLastRow() - 1, dataLastCol).getValues();
         rows.forEach(row => {
-          if (!row[7]) return; // skip if no timestamp
+          if (!row[7]) return;
           entries.push({
             id:            row[8] || ('fuel:' + row[7]),
             timestamp:     row[7],
@@ -185,14 +287,34 @@ function doGet(e) {
         });
       }
 
+      if (checkSheet && checkSheet.getLastRow() > 1) {
+        const checkLastCol = checkSheet.getLastColumn();
+        const rows = checkSheet.getRange(2, 1, checkSheet.getLastRow() - 1, checkLastCol).getValues();
+        rows.forEach(row => {
+          if (!row[5]) return;
+          checks.push({
+            id:        row[6] || ('check:' + row[5]),
+            timestamp: row[5],
+            odometer:  Number(row[2]) || 0,
+            type:      row[3] === 'coolant' ? 'coolant' : 'oil',
+            action:    row[4] === 'topped_up' ? 'topped_up' : 'checked',
+            note:      row.length > 7 ? (row[7] || '') : '',
+            isDeleted: (row.length > 8 ? row[8] : '') === 'Ja',
+            deletedAt: row.length > 9 ? (row[9] || '') : '',
+            updatedAt: row.length > 10 ? (row[10] || '') : '',
+            synced:    true
+          });
+        });
+      }
+
       entries.sort((a, b) => b.odometer - a.odometer);
+      checks.sort((a, b) => b.odometer - a.odometer);
 
       return ContentService
-        .createTextOutput(JSON.stringify({ status: 'ok', entries: entries }))
+        .createTextOutput(JSON.stringify({ status: 'ok', entries: entries, checks: checks }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // ping / default
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', message: 'VingateFuel API kører ✓' }))
       .setMimeType(ContentService.MimeType.JSON);
