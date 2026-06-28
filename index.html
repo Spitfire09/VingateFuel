@@ -840,7 +840,28 @@ function generateCheckId() {
 function getEntries() {
   try {
     const entries = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
-    return Array.isArray(entries) ? entries : [];
+    if (!Array.isArray(entries)) return [];
+    return entries
+      .map(e => {
+        const timestamp = e.timestamp || new Date().toISOString();
+        const odometer = Number(e.odometer);
+        const liters = Number(e.liters);
+        return {
+          id:            e.id || generateEntryId(),
+          timestamp,
+          updatedAt:     e.updatedAt || timestamp,
+          odometer:      Number.isFinite(odometer) ? odometer : 0,
+          liters:        Number.isFinite(liters) ? liters : 0,
+          pricePerLiter: e.pricePerLiter !== '' && e.pricePerLiter != null ? Number(e.pricePerLiter) : null,
+          totalPrice:    e.totalPrice !== '' && e.totalPrice != null ? Number(e.totalPrice) : null,
+          note:          e.note || '',
+          synced:        !!e.synced,
+          excluded:      !!e.excluded,
+          isDeleted:     !!e.isDeleted,
+          deletedAt:     e.deletedAt || ''
+        };
+      })
+      .filter(e => e.odometer > 0 && e.liters > 0);
   } catch { return []; }
 }
 
